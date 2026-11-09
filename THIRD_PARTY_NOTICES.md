@@ -6,6 +6,7 @@ to the respective components; the project's own code is MIT-licensed.
 | Component | License | Source |
 |---|---|---|
 | yt-dlp | Unlicense | https://github.com/yt-dlp/yt-dlp |
+| yt-dlp-ejs | Unlicense | https://github.com/yt-dlp/ejs |
 | Kivy | MIT | https://github.com/kivy/kivy |
 | python-for-android | MIT | https://github.com/kivy/python-for-android |
 | Buildozer | MIT | https://github.com/kivy/buildozer |

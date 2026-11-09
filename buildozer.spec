@@ -10,7 +10,7 @@ version = 0.7.0
 # Local Kivy recipe: requests is dropped from python_depends to avoid the
 # charset-normalizer cp314 wheel issue in p4a on Python 3.14.
 p4a.local_recipes = local_recipes
-requirements = python3,kivy,yt-dlp,certifi
+requirements = python3,kivy,yt-dlp,yt-dlp-ejs,certifi
 orientation = portrait
 fullscreen = 0
 icon.filename = icon.png

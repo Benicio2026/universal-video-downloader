@@ -124,6 +124,7 @@ universal-video-downloader/
 ## 致谢
 
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp)：解析和下载
+- [yt-dlp-ejs](https://github.com/yt-dlp/ejs)：YouTube JS challenge 脚本
 - [FFmpeg](https://ffmpeg.org/)：音视频合并和 MP3 转码
 - [QuickJS-ng](https://github.com/quickjs-ng/quickjs)：处理 YouTube JS challenge
 - [LAME](https://lame.sourceforge.io/)：MP3 编码
