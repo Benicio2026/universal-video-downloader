@@ -86,10 +86,25 @@ jobs:
             done
           fi
           test -s "$ZIP"
-          ls -lh "$ZIP"
+          cp "$ZIP" "$HOME/gradle-8.14.3-all.zip"
+          ls -lh "$ZIP" "$HOME/gradle-8.14.3-all.zip"
 
       - name: Build debug APK
-        run: buildozer -v android debug
+        run: |
+          set -e
+          PROP=.buildozer/android/platform/build-arm64-v8a/dists/universalvideodownloader/gradle/wrapper/gradle-wrapper.properties
+          (
+            for i in $(seq 1 600); do
+              if [ -f "$PROP" ]; then
+                sed -i 's|^distributionUrl=.*|distributionUrl=file\:/home/runner/gradle-8.14.3-all.zip|' "$PROP"
+                echo "Patched $PROP"
+                cat "$PROP"
+                break
+              fi
+              sleep 2
+            done
+          ) &
+          buildozer -v android debug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
