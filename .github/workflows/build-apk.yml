@@ -87,11 +87,18 @@ jobs:
           fi
           test -s "$ZIP"
           cp "$ZIP" "$HOME/gradle-8.14.3-all.zip"
+          mkdir -p "$HOME/.gradle"
+          if [ -f "$HOME/.gradle/gradle.properties" ]; then
+            sed -i '/^org.gradle.java.home=/d' "$HOME/.gradle/gradle.properties"
+          fi
+          echo "org.gradle.java.home=/usr/lib/jvm/temurin-17-jdk-amd64" >> "$HOME/.gradle/gradle.properties"
           ls -lh "$ZIP" "$HOME/gradle-8.14.3-all.zip"
 
       - name: Build debug APK
         run: |
           set -e
+          export JAVA_HOME=/usr/lib/jvm/temurin-17-jdk-amd64
+          export PATH="$JAVA_HOME/bin:$PATH"
           PROP=.buildozer/android/platform/build-arm64-v8a/dists/universalvideodownloader/gradle/wrapper/gradle-wrapper.properties
           (
             for i in $(seq 1 600); do
