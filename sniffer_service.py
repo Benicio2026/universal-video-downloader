@@ -10,7 +10,6 @@
 import time
 from pathlib import Path
 
-from android.runnable import run_on_ui_thread
 from jnius import PythonJavaClass, autoclass, java_method
 
 PythonService = autoclass("org.kivy.android.PythonService")
@@ -28,6 +27,8 @@ Build = autoclass("android.os.Build")
 BuildVersion = autoclass("android.os.Build$VERSION")
 Intent = autoclass("android.content.Intent")
 PythonActivity = autoclass("org.kivy.android.PythonActivity")
+Handler = autoclass("android.os.Handler")
+Looper = autoclass("android.os.Looper")
 
 files_dir = Path(service.getFilesDir().getAbsolutePath())
 flag_path = files_dir / "sniffer.flag"
@@ -99,6 +100,22 @@ class TouchListener(PythonJavaClass):
         return True
 
 
+class UiRunnable(PythonJavaClass):
+    __javainterfaces__ = ["java/lang/Runnable"]
+    __javacontext__ = "app"
+
+    def __init__(self, func):
+        super().__init__()
+        self.func = func
+
+    @java_method("()V")
+    def run(self):
+        try:
+            self.func()
+        except Exception as exc:
+            log(f"UI 任务失败：{exc}")
+
+
 def open_app():
     try:
         intent = Intent(service, PythonActivity)
@@ -113,7 +130,6 @@ def open_app():
         log(f"打开主 App 失败：{exc}")
 
 
-@run_on_ui_thread
 def setup_overlay():
     try:
         window_manager = service.getSystemService(
@@ -181,7 +197,10 @@ def setup_overlay():
 
 
 log("悬浮嗅探服务启动")
-setup_overlay()
+main_handler = Handler(Looper.getMainLooper())
+ui_runnable = UiRunnable(setup_overlay)
+_keep_alive.append(ui_runnable)
+main_handler.post(ui_runnable)
 
 # 保持服务进程存活；Android 前台服务会显示常驻通知。
 while True:

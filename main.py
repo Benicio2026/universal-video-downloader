@@ -1262,7 +1262,7 @@ class UniversalDownloaderApp(App):
             except Exception as exc:
                 errors.append("B站：" + str(exc))
                 self.log("B站搜索失败：" + str(exc))
-        if platform in ("", "youtube"):
+        if platform == "youtube" or (platform == "" and not results):
             try:
                 results.extend(self._search_youtube(title))
             except Exception as exc:
@@ -1387,6 +1387,11 @@ class UniversalDownloaderApp(App):
             "skip_download": True,
             "extract_flat": True,
             "noplaylist": True,
+            "noprogress": True,
+            "socket_timeout": 15,
+            "retries": 1,
+            "extractor_retries": 1,
+            "logger": YTLogger(self),
         }
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(

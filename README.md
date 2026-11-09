@@ -53,7 +53,7 @@ APK 约 48–55 MB（包含 Python、Kivy、yt-dlp、FFmpeg、QuickJS 和中文�
 - B站：`B站`、`bilibili`、`哔哩哔哩`、`小破站`、`bili`
 - YouTube：`YouTube`、`油管`、`yt`
 
-平台留空时会同时搜 B站和 YouTube。搜索结果会显示 UP主、发布时间和时长；同名视频靠这些信息区分。目前只支持 B站和 YouTube 的标题搜索，其他平台请粘贴链接。
+平台留空时优先搜 B站，B站没有结果再试 YouTube。搜索结果会显示 UP主、发布时间和时长；同名视频靠这些信息区分。目前只支持 B站和 YouTube 的标题搜索，其他平台请粘贴链接。
 
 ### 悬浮嗅探
 
