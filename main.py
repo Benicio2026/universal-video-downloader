@@ -32,7 +32,7 @@ import yt_dlp
 from yt_dlp.utils import DownloadCancelled
 
 APP_NAME = "万能视频下载器"
-APP_VERSION = "0.2.0"
+APP_VERSION = "0.3.0"
 QUALITIES = [
     "最佳画质（自动）",
     "1080p 及以下",
@@ -116,6 +116,7 @@ class UniversalDownloaderApp(App):
         self.entry_rows = []
         self.success_count = 0
         self.fail_count = 0
+        self.login_prompted = False
         self.cookies_file = Path(self.user_data_dir) / "cookies.txt"
         self.cookies_path = self.cookies_file if self.cookies_file.exists() else None
         return RootWidget()
@@ -481,6 +482,7 @@ class UniversalDownloaderApp(App):
         self.cancel_event.clear()
         self.current_title = None
         self.current_label = ""
+        self.login_prompted = False
         self.success_count = 0
         self.fail_count = 0
         self._set_busy(True)
@@ -569,6 +571,9 @@ class UniversalDownloaderApp(App):
                         f"失败：{name}\n{msg}"
                     )
                 )
+                if self._is_login_error(message) and not self.login_prompted:
+                    self.login_prompted = True
+                    Clock.schedule_once(lambda dt: self._ask_login())
         Clock.schedule_once(lambda dt: self._on_many_done(total))
 
     def _begin_item(self, index, total, title):

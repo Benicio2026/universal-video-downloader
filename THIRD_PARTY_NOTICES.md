@@ -11,6 +11,8 @@ to the respective components; the project's own code is MIT-licensed.
 | Buildozer | MIT | https://github.com/kivy/buildozer |
 | Python | PSF License | https://www.python.org/psf/license/ |
 | Noto Sans CJK SC | SIL Open Font License 1.1 | https://github.com/notofonts/noto-cjk |
+| FFmpeg | LGPL (built without `--enable-gpl`) | https://ffmpeg.org/ |
+| LAME | LGPL | https://lame.sourceforge.io/ |
 
 ## Fonts
 
@@ -21,9 +23,18 @@ with the APK.
 
 ## FFmpeg
 
-FFmpeg is **not** bundled in v0.1.0. If it is added in a future version, its
-license (LGPL/GPL depending on the build) and the corresponding source offer
-will be documented here.
+Starting with v0.3.0, the APK bundles a static FFmpeg executable built for
+Android arm64. The build is produced from the official FFmpeg source with
+`scripts/build_ffmpeg.sh`; it is configured with `--disable-network`,
+`--disable-autodetect` and without `--enable-gpl`. The resulting binary is
+distributed under the LGPL. The corresponding source is available at
+<https://ffmpeg.org/download.html>; the build script in this repository
+documents the exact configuration.
+
+## LAME
+
+The FFmpeg build statically links libmp3lame from LAME 3.100 for MP3 encoding.
+LAME is distributed under the LGPL. Source: <https://lame.sourceforge.io/>.
 
 ## yt-dlp
 

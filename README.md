@@ -13,7 +13,8 @@ Android 视频下载 App。界面用 Kivy 写，下载交给 [yt-dlp](https://gi
 
 - 粘贴链接后点「解析」，列出页面里的视频条目
 - 支持播放列表、合集、多P页面，可勾选单个、多个或全选后批量下载
-- 画质：最佳 / 1080p / 720p / 仅音频
+- 画质：最佳 / 1080p / 720p / 仅音频 MP3
+- 内置 FFmpeg：自动合并 DASH 音视频，支持 MP3 转码
 - 显示进度、速度、剩余时间，可取消
 - 保存到公共 Download 目录
 - 中文界面，内置中文字体
@@ -26,6 +27,8 @@ Android 视频下载 App。界面用 Kivy 写，下载交给 [yt-dlp](https://gi
 3. 首次启动授予存储权限。Android 11 及以上需要到系统设置里打开“所有文件访问”
 
 华为、荣耀机型如果开启了纯净模式，需要先允许安装外部来源应用。当前 APK 只包含 `arm64-v8a`，近几年的主流手机都是这个架构。
+
+APK 约 80–110 MB（包含 Python、Kivy、yt-dlp、FFmpeg 和中文字体）。
 
 ## 使用
 
@@ -48,7 +51,7 @@ App 不单独设置代理。手机开启全局/TUN 模式的代理后，yt-dlp �
 
 ## 已知限制
 
-- 没有内置 FFmpeg，目前只能下载音视频合一的单文件格式。YouTube、B站的高清 DASH 流需要合并音视频，暂时下不到最高画质；MP3 转码也不可用。
+- 已内置 FFmpeg，可以合并高清 DASH 音视频并转 MP3。个别站点下不到最高画质时，通常是因为需要登录或站点解析限制。
 - 登录通过导入 cookies.txt 实现，App 内登录页还在开发中。
 - App 退到后台后下载可能被系统暂停。
 - YouTube 的 JS challenge 在手机上可能限制部分画质，后续版本再处理。
@@ -59,8 +62,8 @@ App 不单独设置代理。手机开启全局/TUN 模式的代理后，yt-dlp �
 GitHub Actions 会在推送 `main` 或 `v*` 标签时构建 APK。公开仓库的 Actions 免费，构建和 Releases 分发都不产生费用。
 
 ```bash
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.3.0
+git push origin v0.3.0
 ```
 
 本地构建需要 Linux 或 WSL，Windows 不能直接运行 Buildozer：
@@ -102,7 +105,7 @@ universal-video-downloader/
 
 **下载报 403 或 “Sign in to confirm you're not a bot”？** 先确认手机代理已开启且为全局/TUN 模式；仍不行时导入 cookies.txt 后重试。
 
-**下载不到 4K，或者下完打不开？** 这个版本没有 FFmpeg 合并，YouTube 等站点的高清流需要合并音视频，建议选 1080p 及以下。
+**下载不到最高画质？** 先确认该视频是否需要登录；需要时导入 cookies.txt。DRM 站点仍然不支持。
 
 **文件保存在哪？** 默认在 `Download/UniversalVideoDownloader`。如果没有授予“所有文件访问”，会保存到 App 私有目录，具体路径显示在界面上。
 
@@ -111,6 +114,8 @@ universal-video-downloader/
 ## 致谢
 
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp)：解析和下载
+- [FFmpeg](https://ffmpeg.org/)：音视频合并和 MP3 转码
+- [LAME](https://lame.sourceforge.io/)：MP3 编码
 - [Kivy](https://kivy.org/)：界面
 - [python-for-android](https://github.com/kivy/python-for-android)、[Buildozer](https://github.com/kivy/buildozer)：APK 打包
 - [Noto Sans CJK](https://github.com/notofonts/noto-cjk)：中文字体
