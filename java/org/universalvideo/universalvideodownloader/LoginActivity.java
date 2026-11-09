@@ -83,19 +83,29 @@ public class LoginActivity extends Activity {
                 ViewGroup.LayoutParams.WRAP_CONTENT));
 
         webView = new WebView(this);
-        WebSettings settings = webView.getSettings();
-        settings.setJavaScriptEnabled(true);
-        settings.setDomStorageEnabled(true);
-        settings.setDatabaseEnabled(true);
-        settings.setLoadWithOverviewMode(true);
-        settings.setUseWideViewPort(true);
-        webView.setWebViewClient(new WebViewClient());
         try {
-            CookieManager.getInstance().setAcceptCookie(true);
-            CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
-        } catch (Exception ignored) {
+            WebSettings settings = webView.getSettings();
+            settings.setJavaScriptEnabled(true);
+            settings.setDomStorageEnabled(true);
+            settings.setDatabaseEnabled(true);
+            settings.setLoadWithOverviewMode(true);
+            settings.setUseWideViewPort(true);
+            webView.setWebViewClient(new WebViewClient());
+            try {
+                CookieManager.getInstance().setAcceptCookie(true);
+                CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
+            } catch (Exception ignored) {
+            }
+            webView.loadUrl(targetUrl);
+        } catch (Throwable error) {
+            writeResult("error", 0);
+            Toast.makeText(
+                    this,
+                    "登录页不可用：" + error.getMessage(),
+                    Toast.LENGTH_LONG).show();
+            finish();
+            return;
         }
-        webView.loadUrl(targetUrl);
 
         root.addView(bar, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,

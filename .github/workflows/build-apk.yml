@@ -23,6 +23,12 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Cache Android debug keystore
+        uses: actions/cache@v4
+        with:
+          path: ~/.android
+          key: android-debug-keystore-v1
+
       - name: Install system dependencies
         run: |
           sudo apt-get update

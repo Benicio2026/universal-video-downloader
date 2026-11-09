@@ -18,7 +18,6 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
-from urllib.parse import urlparse
 
 from kivy.app import App
 from kivy.clock import Clock
@@ -42,7 +41,7 @@ import yt_dlp
 from yt_dlp.utils import DownloadCancelled
 
 APP_NAME = "万能视频下载器"
-APP_VERSION = "0.9.0"
+APP_VERSION = "0.9.1"
 QUALITIES = [
     "最佳画质（自动）",
     "1080p 及以下",
@@ -166,6 +165,8 @@ class UniversalDownloaderApp(App):
         self._wake_lock = None
         self._service_active = False
         self._service_started_at = 0.0
+        self._service_last_activity = time.time()
+        self._service_seen_mtime = 0.0
         self._service_files_dir = Path(self.user_data_dir)
         self._service_job_path = self._service_files_dir / "service_job.json"
         self._service_progress_path = (
@@ -826,6 +827,8 @@ class UniversalDownloaderApp(App):
             ServiceClass.start(activity, "")
             self._service_active = True
             self._service_started_at = time.time()
+            self._service_last_activity = time.time()
+            self._service_seen_mtime = 0.0
             self.cancel_event.clear()
             self.current_title = None
             self.current_label = ""
@@ -859,6 +862,34 @@ class UniversalDownloaderApp(App):
                 return False
             return True
         status = data.get("status")
+        try:
+            mtime = self._service_progress_path.stat().st_mtime
+        except Exception:
+            mtime = 0.0
+        if mtime > self._service_seen_mtime:
+            self._service_seen_mtime = mtime
+            self._service_last_activity = time.time()
+        if status in ("starting", "progress", "processing"):
+            limit = 60 if status == "starting" else 180
+            if time.time() - self._service_last_activity > limit:
+                self._service_active = False
+                self._set_busy(False)
+                self.status = "后台服务没有响应"
+                self.log(
+                    "后台服务长时间没有更新，正在改用应用内下载重试。"
+                )
+                try:
+                    self._service_cancel_path.write_text(
+                        "1", encoding="utf-8"
+                    )
+                except Exception:
+                    pass
+                self._fallback_to_inprocess(
+                    self._last_selected,
+                    self._last_quality,
+                    "后台服务无响应",
+                )
+                return False
         if status == "starting":
             self.progress = 0
             self.status = (
@@ -1019,6 +1050,8 @@ class UniversalDownloaderApp(App):
             if data.get("status") in ("starting", "progress", "processing"):
                 self._service_active = True
                 self._service_started_at = time.time()
+                self._service_last_activity = time.time()
+                self._service_seen_mtime = 0.0
                 self._set_busy(True)
                 self.status = "后台下载进行中…"
                 self.log("检测到后台下载仍在进行。")
@@ -1278,7 +1311,11 @@ class UniversalDownloaderApp(App):
         import certifi
         import ssl
 
-        context = ssl.create_default_context(cafile=certifi.where())
+        context = None
+        try:
+            context = ssl.create_default_context(cafile=certifi.where())
+        except Exception:
+            context = ssl.create_default_context()
         cookie = self._get_bilibili_cookie(context)
         query = urllib.parse.quote(title)
         url = (
@@ -2058,14 +2095,17 @@ class UniversalDownloaderApp(App):
         content = BoxLayout(
             orientation="vertical", spacing=dp(10), padding=dp(14)
         )
+        if reason:
+            message_text = reason + "\n\n"
+        else:
+            message_text = "该视频需要登录才能访问。\n\n"
+        message_text += (
+            "登录会在站点自己的页面上完成，App 不会接触你的账号密码；"
+            "登录后只保存 cookies 到本机，不会上传。\n\n"
+            "如果不想登录，需要登录的视频将无法下载。"
+        )
         message = Label(
-            text=(
-                "该视频需要登录才能访问。\n\n"
-                + (reason + "\n\n" if reason else "")
-                + "登录会在站点自己的页面上完成，App 不会接触你的账号密码；"
-                "登录后只保存 cookies 到本机，不会上传。\n\n"
-                "如果不想登录，需要登录的视频将无法下载。"
-            ),
+            text=message_text,
             font_size=dp(12),
             halign="left",
             valign="middle",
@@ -2073,10 +2113,10 @@ class UniversalDownloaderApp(App):
         message.bind(
             size=lambda inst, size: setattr(inst, "text_size", size)
         )
-        buttons = BoxLayout(
-            orientation="horizontal",
+        buttons = GridLayout(
+            cols=2,
             size_hint_y=None,
-            height=dp(44),
+            height=dp(96),
             spacing=dp(6),
         )
         login_button = Button(
@@ -2107,7 +2147,7 @@ class UniversalDownloaderApp(App):
         popup = Popup(
             title="需要登录",
             content=content,
-            size_hint=(0.94, 0.66),
+            size_hint=(0.94, 0.72),
         )
 
         def do_login(_instance):
@@ -2201,6 +2241,11 @@ class UniversalDownloaderApp(App):
             if data.get("status") == "cancel":
                 self.log("已取消登录。")
                 self.status = "已取消登录"
+                return False
+            if data.get("status") == "error":
+                self.log("登录页不可用，请改用 cookies.txt。")
+                self.status = "登录页不可用"
+                self.show_cookies_dialog()
                 return False
             cookie_path = (
                 self._service_files_dir / "webview_cookies.txt"

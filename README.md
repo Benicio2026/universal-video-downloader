@@ -36,6 +36,8 @@ Android 视频下载 App。界面用 Kivy 写，下载交给 [yt-dlp](https://gi
 
 华为、荣耀机型如果开启了纯净模式，需要先允许安装外部来源应用。当前 APK 只包含 `arm64-v8a`，近几年的主流手机都是这个架构。
 
+从 v0.9.1 起，CI 会缓存 debug 签名密钥，之后的版本一般可以直接覆盖安装；如果仍提示签名不一致，先卸载旧版再装。
+
 APK 约 48–55 MB（包含 Python、Kivy、yt-dlp、FFmpeg、QuickJS 和中文字体）。
 
 ## 使用
@@ -99,8 +101,8 @@ App 不单独设置代理。手机开启全局/TUN 模式的代理后，yt-dlp �
 GitHub Actions 会在推送 `main` 或 `v*` 标签时构建 APK。公开仓库的 Actions 免费，构建和 Releases 分发都不产生费用。
 
 ```bash
-git tag v0.9.0
-git push origin v0.9.0
+git tag v0.9.1
+git push origin v0.9.1
 ```
 
 本地构建需要 Linux 或 WSL，Windows 不能直接运行 Buildozer：
