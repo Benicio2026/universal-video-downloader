@@ -42,6 +42,7 @@ jobs:
         with:
           path: |
             ~/.buildozer
+            ~/.gradle
           key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
           restore-keys: |
             buildozer-${{ runner.os }}-
@@ -67,6 +68,25 @@ jobs:
           fetch sdl2_image https://www.libsdl.org/projects/SDL_image/release/SDL2_image-2.8.2.tar.gz SDL2_image-2.8.2.tar.gz
           fetch sdl2_mixer https://www.libsdl.org/projects/SDL_mixer/release/SDL2_mixer-2.6.3.tar.gz SDL2_mixer-2.6.3.tar.gz
           fetch sdl2_ttf https://www.libsdl.org/projects/SDL_ttf/release/SDL2_ttf-2.22.0.tar.gz SDL2_ttf-2.22.0.tar.gz
+
+      - name: Prefetch Gradle distribution
+        run: |
+          set -e
+          DIR="$HOME/.gradle/wrapper/dists/gradle-8.14.3-all/10utluxaxniiv4wxiphsi49nj"
+          mkdir -p "$DIR"
+          ZIP="$DIR/gradle-8.14.3-all.zip"
+          if [ ! -s "$ZIP" ]; then
+            for url in \
+              https://mirrors.cloud.tencent.com/gradle/gradle-8.14.3-all.zip \
+              https://mirrors.huaweicloud.com/gradle/gradle-8.14.3-all.zip; do
+              echo "Downloading $url"
+              if curl -L --retry 10 --retry-all-errors --max-time 900 -o "$ZIP" "$url"; then
+                break
+              fi
+            done
+          fi
+          test -s "$ZIP"
+          ls -lh "$ZIP"
 
       - name: Build debug APK
         run: buildozer -v android debug
