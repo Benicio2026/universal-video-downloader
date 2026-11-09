@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Buildozer / Android build outputs
+.buildozer/
+bin/
+*.apk
+*.aab
+*.spec.bak
+
+# Downloaded build assets (fetched by scripts/fetch_font.py)
+assets/fonts/*.otf
+assets/fonts/*.ttf
+
+# Logs
+*.log
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

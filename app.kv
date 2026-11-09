@@ -1,0 +1,215 @@
+#:import dp kivy.metrics.dp
+
+<Card@BoxLayout>:
+    orientation: "vertical"
+    size_hint_y: None
+    height: self.minimum_height
+    padding: dp(14)
+    spacing: dp(9)
+    canvas.before:
+        Color:
+            rgba: 0.118, 0.161, 0.231, 1
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [dp(14)]
+
+<SectionLabel@Label>:
+    size_hint_y: None
+    height: dp(22)
+    font_size: dp(12)
+    bold: True
+    color: 0.58, 0.64, 0.75, 1
+    halign: "left"
+    valign: "middle"
+    text_size: self.size
+
+<FieldInput@TextInput>:
+    multiline: False
+    font_size: dp(14)
+    size_hint_y: None
+    height: dp(46)
+    padding: dp(12), dp(12)
+    background_normal: ""
+    background_active: ""
+    background_color: 0.059, 0.09, 0.165, 1
+    foreground_color: 0.9, 0.93, 0.98, 1
+    cursor_color: 0.23, 0.51, 0.96, 1
+    hint_text_color: 0.45, 0.51, 0.62, 1
+    selection_color: 0.23, 0.51, 0.96, 0.45
+
+<DarkSpinner@Spinner>:
+    size_hint_y: None
+    height: dp(46)
+    font_size: dp(14)
+    background_normal: ""
+    background_color: 0.059, 0.09, 0.165, 1
+    color: 0.9, 0.93, 0.98, 1
+
+<PrimaryButton@Button>:
+    size_hint_y: None
+    height: dp(46)
+    background_normal: ""
+    background_color: 0.23, 0.51, 0.96, 1
+    color: 1, 1, 1, 1
+    font_size: dp(15)
+    bold: True
+
+<GhostButton@Button>:
+    size_hint_y: None
+    height: dp(42)
+    background_normal: ""
+    background_color: 0.16, 0.22, 0.32, 1
+    color: 0.85, 0.89, 0.96, 1
+    font_size: dp(14)
+
+<StatusLabel@Label>:
+    size_hint_y: None
+    height: dp(38)
+    font_size: dp(12)
+    color: 0.7, 0.76, 0.86, 1
+    halign: "left"
+    valign: "middle"
+    text_size: self.size
+
+<RootWidget>:
+    orientation: "vertical"
+    canvas.before:
+        Color:
+            rgba: 0.059, 0.09, 0.165, 1
+        Rectangle:
+            pos: self.pos
+            size: self.size
+
+    BoxLayout:
+        size_hint_y: None
+        height: dp(68)
+        padding: dp(16), dp(8)
+        canvas.before:
+            Color:
+                rgba: 0.118, 0.435, 0.922, 1
+            Rectangle:
+                pos: self.pos
+                size: self.size
+        BoxLayout:
+            orientation: "vertical"
+            Label:
+                text: "万能视频下载器"
+                font_size: dp(21)
+                bold: True
+                color: 1, 1, 1, 1
+                halign: "left"
+                valign: "middle"
+                text_size: self.size
+            Label:
+                text: "yt-dlp 引擎 · 一千多个站点 · 免费开源"
+                font_size: dp(11)
+                color: 0.82, 0.89, 1, 1
+                halign: "left"
+                valign: "middle"
+                text_size: self.size
+
+    ScrollView:
+        do_scroll_x: False
+        BoxLayout:
+            orientation: "vertical"
+            size_hint_y: None
+            height: self.minimum_height
+            padding: dp(12)
+            spacing: dp(10)
+
+            Card:
+                SectionLabel:
+                    text: "视频链接"
+                FieldInput:
+                    id: url_input
+                    hint_text: "粘贴 YouTube / B站 / X / TikTok 等任意视频链接"
+                BoxLayout:
+                    size_hint_y: None
+                    height: dp(42)
+                    spacing: dp(8)
+                    GhostButton:
+                        text: "粘贴"
+                        on_release: app.paste_url()
+                    GhostButton:
+                        text: "清空"
+                        on_release: app.clear_url()
+
+            Card:
+                SectionLabel:
+                    text: "下载设置"
+                BoxLayout:
+                    size_hint_y: None
+                    height: dp(46)
+                    spacing: dp(10)
+                    Label:
+                        text: "画质"
+                        size_hint_x: None
+                        width: dp(44)
+                        font_size: dp(13)
+                        color: 0.75, 0.8, 0.88, 1
+                        halign: "left"
+                        valign: "middle"
+                        text_size: self.size
+                    DarkSpinner:
+                        id: quality_spinner
+                        text: "最佳画质（自动）"
+                        values: ["最佳画质（自动）", "1080p 及以下", "720p 及以下", "仅音频"]
+                FieldInput:
+                    id: proxy_input
+                    text: app.proxy
+                    hint_text: "代理（可选），例如 http://127.0.0.1:7890"
+
+            Card:
+                BoxLayout:
+                    size_hint_y: None
+                    height: dp(48)
+                    spacing: dp(8)
+                    PrimaryButton:
+                        text: "开始下载"
+                        on_release: app.start_download()
+                    GhostButton:
+                        text: "取消"
+                        disabled: not app.busy
+                        on_release: app.cancel_download()
+                ProgressBar:
+                    value: app.progress
+                    max: 100
+                    size_hint_y: None
+                    height: dp(10)
+                StatusLabel:
+                    text: app.status
+                StatusLabel:
+                    text: "保存目录：" + app.download_dir_text
+                    font_size: dp(11)
+                    shorten: True
+                BoxLayout:
+                    size_hint_y: None
+                    height: dp(40)
+                    spacing: dp(8)
+                    GhostButton:
+                        text: "存储权限"
+                        height: dp(40)
+                        on_release: app.open_storage_settings()
+                    GhostButton:
+                        text: "刷新目录"
+                        height: dp(40)
+                        on_release: app.refresh_download_dir()
+
+            Card:
+                SectionLabel:
+                    text: "日志"
+                TextInput:
+                    id: log_input
+                    readonly: True
+                    multiline: True
+                    size_hint_y: None
+                    height: dp(190)
+                    font_size: dp(12)
+                    padding: dp(10), dp(10)
+                    background_normal: ""
+                    background_active: ""
+                    background_color: 0.035, 0.055, 0.11, 1
+                    foreground_color: 0.72, 0.78, 0.88, 1
+                    cursor_color: 0.23, 0.51, 0.96, 1
+                    selection_color: 0.23, 0.51, 0.96, 0.45

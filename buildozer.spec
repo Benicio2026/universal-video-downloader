@@ -1,0 +1,20 @@
+[app]
+title = 万能视频下载器
+package.name = universalvideodownloader
+package.domain = org.universalvideo
+source.dir = .
+source.include_exts = py,kv,png,jpg,otf,ttf,json,txt
+source.exclude_dirs = .venv,venv,__pycache__,bin,.buildozer,.git,.github
+source.exclude_patterns = *.pyc,*.pyo,*.apk,*.aab,*.zip
+version = 0.1.0
+requirements = python3,kivy,yt-dlp,pyjnius,android,certifi
+orientation = portrait
+fullscreen = 0
+icon.filename = icon.png
+android.permissions = INTERNET,ACCESS_NETWORK_STATE,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,MANAGE_EXTERNAL_STORAGE
+android.api = 34
+android.minapi = 24
+android.archs = arm64-v8a
+android.allow_backup = True
+android.accept_sdk_license = True
+android.logcat_filters = *:S python:D
