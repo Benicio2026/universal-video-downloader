@@ -6,10 +6,12 @@
 界面、交互与打包逻辑为本项目原创。
 """
 
+import json
 import os
 import re
 import shutil
 import threading
+import time
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -33,7 +35,7 @@ import yt_dlp
 from yt_dlp.utils import DownloadCancelled
 
 APP_NAME = "万能视频下载器"
-APP_VERSION = "0.5.0"
+APP_VERSION = "0.6.0"
 QUALITIES = [
     "最佳画质（自动）",
     "1080p 及以下",
@@ -112,6 +114,16 @@ class UniversalDownloaderApp(App):
         self.download_dir = None
         self.ffmpeg_path = None
         self._wake_lock = None
+        self._service_active = False
+        self._service_started_at = 0.0
+        self._service_files_dir = Path(self.user_data_dir)
+        self._service_job_path = self._service_files_dir / "service_job.json"
+        self._service_progress_path = (
+            self._service_files_dir / "service_progress.json"
+        )
+        self._service_cancel_path = (
+            self._service_files_dir / "service_cancel.flag"
+        )
         self.current_title = None
         self.current_label = ""
         self.entries = []
@@ -135,7 +147,9 @@ class UniversalDownloaderApp(App):
             self.log("已加载本机 cookies.txt。")
         if platform == "android":
             self.request_android_permissions()
+            self._refresh_service_paths()
             self._bind_share_intent()
+            self._resume_service_if_running()
 
     def on_pause(self):
         return True
@@ -220,12 +234,14 @@ class UniversalDownloaderApp(App):
         try:
             from android.permissions import Permission, request_permissions
 
-            request_permissions(
-                [
-                    Permission.READ_EXTERNAL_STORAGE,
-                    Permission.WRITE_EXTERNAL_STORAGE,
-                ]
-            )
+            perms = [
+                Permission.READ_EXTERNAL_STORAGE,
+                Permission.WRITE_EXTERNAL_STORAGE,
+            ]
+            notif = getattr(Permission, "POST_NOTIFICATIONS", None)
+            if notif is not None:
+                perms.append(notif)
+            request_permissions(perms)
         except Exception as exc:
             self.log(f"权限请求失败：{exc}")
 
@@ -252,6 +268,182 @@ class UniversalDownloaderApp(App):
             self.log("已打开权限设置；授予“所有文件访问”后返回并点“刷新目录”。")
         except Exception as exc:
             self.log(f"打开权限设置失败：{exc}")
+
+    # ------------------------------------------------------------ 后台服务
+
+    def _get_android_files_dir(self):
+        try:
+            from jnius import autoclass
+
+            activity = autoclass("org.kivy.android.PythonActivity").mActivity
+            return Path(activity.getFilesDir().getAbsolutePath())
+        except Exception:
+            return Path(self.user_data_dir)
+
+    def _refresh_service_paths(self):
+        self._service_files_dir = self._get_android_files_dir()
+        self._service_job_path = self._service_files_dir / "service_job.json"
+        self._service_progress_path = (
+            self._service_files_dir / "service_progress.json"
+        )
+        self._service_cancel_path = (
+            self._service_files_dir / "service_cancel.flag"
+        )
+
+    def _start_android_service(self, entries, quality):
+        try:
+            from jnius import autoclass
+
+            PythonActivity = autoclass("org.kivy.android.PythonActivity")
+            ServiceClass = autoclass(
+                "org.universalvideo.universalvideodownloader.ServiceDownloader"
+            )
+            activity = PythonActivity.mActivity
+            self._service_files_dir = Path(
+                activity.getFilesDir().getAbsolutePath()
+            )
+            self._service_job_path = (
+                self._service_files_dir / "service_job.json"
+            )
+            self._service_progress_path = (
+                self._service_files_dir / "service_progress.json"
+            )
+            self._service_cancel_path = (
+                self._service_files_dir / "service_cancel.flag"
+            )
+            outdir = self.download_dir or self.get_download_dir()
+            job = {
+                "entries": [
+                    {
+                        "url": entry["url"],
+                        "title": entry.get("title", ""),
+                    }
+                    for entry in entries
+                ],
+                "quality": quality,
+                "outdir": str(outdir),
+                "ffmpeg": self.ffmpeg_path,
+                "cookies": str(self.cookies_path)
+                if self.cookies_path and self.cookies_path.exists()
+                else None,
+            }
+            self._service_job_path.write_text(
+                json.dumps(job, ensure_ascii=False), encoding="utf-8"
+            )
+            for path in (
+                self._service_progress_path,
+                self._service_cancel_path,
+            ):
+                try:
+                    path.unlink()
+                except FileNotFoundError:
+                    pass
+            ServiceClass.start(activity, "")
+            self._service_active = True
+            self._service_started_at = time.time()
+            self.cancel_event.clear()
+            self.current_title = None
+            self.current_label = ""
+            self.login_prompted = False
+            self.success_count = 0
+            self.fail_count = 0
+            self._set_busy(True)
+            self.progress = 0
+            self.status = f"后台下载 {len(entries)} 个视频…"
+            self.log("已交给前台下载服务，退出 App 后仍会继续。")
+            Clock.schedule_interval(self._poll_service, 0.5)
+            return True
+        except Exception as exc:
+            self.log(f"后台服务不可用，改用前台下载：{exc}")
+            return False
+
+    def _poll_service(self, dt):
+        if not self._service_active:
+            return False
+        try:
+            data = json.loads(
+                self._service_progress_path.read_text(encoding="utf-8")
+            )
+        except Exception:
+            if time.time() - self._service_started_at > 20:
+                self._service_active = False
+                self._set_busy(False)
+                self.status = "后台服务没有响应"
+                self.log("后台服务启动超时，请重试。")
+                return False
+            return True
+        status = data.get("status")
+        if status == "starting":
+            self.progress = 0
+            self.status = (
+                f"正在下载 {data.get('index')}/{data.get('total')}："
+                f"{data.get('title', '')}"
+            )
+        elif status == "progress":
+            try:
+                self.progress = float(data.get("percent") or 0)
+            except (TypeError, ValueError):
+                self.progress = 0
+            speed = data.get("speed") or ""
+            eta = data.get("eta") or ""
+            parts = [f"{self.progress:.1f}%"]
+            if speed:
+                parts.append(speed)
+            if eta:
+                parts.append("剩余 " + eta)
+            self.status = (
+                f"{data.get('index')}/{data.get('total')} "
+                + "  ".join(parts)
+            )
+        elif status == "processing":
+            self.status = (
+                f"{data.get('index')}/{data.get('total')} 正在合并…"
+            )
+        elif status == "error_item":
+            self.log(
+                f"失败：{data.get('title', '')} - "
+                f"{data.get('error', '')}"
+            )
+        elif status == "done":
+            self._service_active = False
+            self._set_busy(False)
+            self.success_count = data.get("success", 0)
+            self.fail_count = data.get("fail", 0)
+            if data.get("cancelled"):
+                self.status = "已取消"
+                self.log("后台下载已取消。")
+            else:
+                self.progress = 100
+                self.status = (
+                    f"完成：成功 {self.success_count} 个，"
+                    f"失败 {self.fail_count} 个"
+                )
+                self.log(self.status)
+            return False
+        elif status == "error":
+            self._service_active = False
+            self._set_busy(False)
+            self.status = "后台下载失败"
+            self.log("服务错误：" + str(data.get("error", "")))
+            return False
+        return True
+
+    def _resume_service_if_running(self):
+        try:
+            if not self._service_progress_path.exists():
+                return
+            data = json.loads(
+                self._service_progress_path.read_text(encoding="utf-8")
+            )
+            if data.get("status") in ("starting", "progress", "processing"):
+                self._service_active = True
+                self._service_started_at = time.time()
+                self._set_busy(True)
+                self.status = "后台下载进行中…"
+                self.log("检测到后台下载仍在进行。")
+                Clock.schedule_interval(self._poll_service, 0.5)
+        except Exception:
+            pass
 
     # ------------------------------------------------------------ 工具
 
@@ -550,6 +742,8 @@ class UniversalDownloaderApp(App):
         quality = self.root.ids.quality_spinner.text
         if quality == "仅音频" and not self.ffmpeg_path:
             self.log("提示：未检测到 FFmpeg，将保存原始音频格式（m4a/webm），不会转码为 MP3。")
+        if platform == "android" and self._start_android_service(selected, quality):
+            return
         self.cancel_event.clear()
         self.current_title = None
         self.current_label = ""
@@ -711,6 +905,15 @@ class UniversalDownloaderApp(App):
             self.log(self.status)
 
     def cancel_download(self):
+        if self._service_active:
+            try:
+                self._service_cancel_path.write_text(
+                    "1", encoding="utf-8"
+                )
+            except Exception:
+                pass
+            self.status = "正在取消…"
+            return
         if self.busy:
             self.cancel_event.set()
             self.status = "正在取消…"
