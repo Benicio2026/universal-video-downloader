@@ -85,12 +85,19 @@
         size_hint_y: None
         height: dp(68)
         padding: dp(16), dp(8)
+        spacing: dp(8)
         canvas.before:
             Color:
                 rgba: 0.118, 0.435, 0.922, 1
             Rectangle:
                 pos: self.pos
                 size: self.size
+        canvas.after:
+            Color:
+                rgba: 0.95, 0.65, 0.78, 1
+            Rectangle:
+                pos: self.x, self.y
+                size: self.width, dp(2)
         BoxLayout:
             orientation: "vertical"
             Label:
@@ -102,14 +109,23 @@
                 valign: "middle"
                 text_size: self.size
             Label:
-                text: "yt-dlp 引擎 · 一千多个站点 · 免费开源"
+                text: "yt-dlp 引擎 · 一千多个站点 · 小真寻帮你收好视频"
                 font_size: dp(11)
-                color: 0.82, 0.89, 1, 1
+                color: 0.95, 0.9, 0.95, 1
                 halign: "left"
                 valign: "middle"
                 text_size: self.size
+        Image:
+            source: "mascot.png"
+            size_hint_x: None
+            width: dp(52)
+            size_hint_y: None
+            height: dp(52)
+            allow_stretch: True
+            keep_ratio: True
 
     ScrollView:
+        id: main_scroll
         do_scroll_x: False
         BoxLayout:
             orientation: "vertical"
@@ -205,16 +221,62 @@
                         values: ["最佳画质（自动）", "1080p 及以下", "720p 及以下", "仅音频"]
                 BoxLayout:
                     size_hint_y: None
+                    height: dp(34)
+                    spacing: dp(6)
+                    CheckBox:
+                        size_hint_x: None
+                        width: dp(34)
+                        active: app.use_service
+                        on_active: app.set_use_service(self.active)
+                    Label:
+                        text: "使用前台服务下载（可退出 App 继续）"
+                        font_size: dp(12)
+                        color: 0.75, 0.8, 0.88, 1
+                        halign: "left"
+                        valign: "middle"
+                        text_size: self.size
+                GhostButton:
+                    text: ("收起登录 / cookies" if app.login_expanded else "登录 / cookies（可选）")
                     height: dp(40)
-                    spacing: dp(8)
-                    GhostButton:
-                        text: "站内登录"
-                        height: dp(40)
-                        on_release: app.open_login_webview()
-                    GhostButton:
-                        text: "导入 cookies.txt"
-                        height: dp(40)
-                        on_release: app.show_cookies_dialog()
+                    on_release: app.toggle_login_section()
+                BoxLayout:
+                    orientation: "vertical"
+                    size_hint_y: None
+                    height: (dp(116) if app.login_expanded else 0)
+                    opacity: 1 if app.login_expanded else 0
+                    disabled: not app.login_expanded
+                    spacing: dp(6)
+                    Label:
+                        text: "登录在站点官方页面完成，App 不接触账号密码；cookies 只保存在本机，不会上传。需要登录的视频，不登录将无法下载。"
+                        font_size: dp(11)
+                        color: 0.65, 0.72, 0.84, 1
+                        halign: "left"
+                        valign: "middle"
+                        text_size: self.size
+                        size_hint_y: None
+                        height: dp(58)
+                    BoxLayout:
+                        size_hint_y: None
+                        height: dp(44)
+                        spacing: dp(8)
+                        GhostButton:
+                            text: "站内登录"
+                            height: dp(44)
+                            on_release: app.open_login_webview()
+                        GhostButton:
+                            text: "导入 cookies.txt"
+                            height: dp(44)
+                            on_release: app.show_cookies_dialog()
+                Label:
+                    text: app.login_notice
+                    size_hint_y: None
+                    height: (dp(34) if app.login_notice else 0)
+                    opacity: 1 if app.login_notice else 0
+                    font_size: dp(11)
+                    color: 0.95, 0.75, 0.4, 1
+                    halign: "left"
+                    valign: "middle"
+                    text_size: self.size
 
             Card:
                 BoxLayout:
@@ -235,10 +297,25 @@
                     height: dp(10)
                 StatusLabel:
                     text: app.status
-                StatusLabel:
-                    text: "保存目录：" + app.download_dir_text
-                    font_size: dp(11)
-                    shorten: True
+                BoxLayout:
+                    size_hint_y: None
+                    height: dp(38)
+                    spacing: dp(8)
+                    Label:
+                        text: "保存目录：" + app.download_dir_text
+                        font_size: dp(11)
+                        color: 0.7, 0.76, 0.86, 1
+                        halign: "left"
+                        valign: "middle"
+                        text_size: self.size
+                        shorten: True
+                        shorten_from: "center"
+                    GhostButton:
+                        text: "更改"
+                        size_hint_x: None
+                        width: dp(64)
+                        height: dp(38)
+                        on_release: app.choose_download_dir()
                 BoxLayout:
                     size_hint_y: None
                     height: dp(40)
@@ -248,6 +325,10 @@
                         height: dp(40)
                         on_release: app.open_storage_settings()
                     GhostButton:
+                        text: "服务日志"
+                        height: dp(40)
+                        on_release: app.show_service_log()
+                    GhostButton:
                         text: "刷新目录"
                         height: dp(40)
                         on_release: app.refresh_download_dir()
@@ -255,17 +336,21 @@
             Card:
                 SectionLabel:
                     text: "日志"
-                TextInput:
-                    id: log_input
-                    readonly: True
-                    multiline: True
+                ScrollView:
+                    id: log_scroll
                     size_hint_y: None
-                    height: dp(160)
-                    font_size: dp(12)
-                    padding: dp(10), dp(10)
-                    background_normal: ""
-                    background_active: ""
-                    background_color: 0.035, 0.055, 0.11, 1
-                    foreground_color: 0.72, 0.78, 0.88, 1
-                    cursor_color: 0.23, 0.51, 0.96, 1
-                    selection_color: 0.23, 0.51, 0.96, 0.45
+                    height: dp(190)
+                    do_scroll_x: False
+                    Label:
+                        text: app.log_text
+                        size_hint_y: None
+                        height: self.texture_size[1]
+                        text_size: self.width, None
+                        font_size: dp(11)
+                        color: 0.72, 0.78, 0.88, 1
+                        halign: "left"
+                        valign: "top"
+                GhostButton:
+                    text: "复制日志"
+                    height: dp(36)
+                    on_release: app.copy_log()

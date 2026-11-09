@@ -17,10 +17,12 @@ Android 视频下载 App。界面用 Kivy 写，下载交给 [yt-dlp](https://gi
 - 画质：最佳 / 1080p / 720p / 仅音频 MP3
 - 内置 FFmpeg：自动合并 DASH 音视频，支持 MP3 转码
 - 内置 QuickJS：处理 YouTube 的 JS challenge，提升可选画质
-- 需要登录的站点可站内登录（WebView），App 不接触账号密码
+- 需要登录时可打开独立登录页，App 不接触账号密码
+- 登录 / cookies 收在折叠栏里，遇到需要登录的视频才展开
+- 下载目录可以在 App 内选择（内部存储、Download、Movies 等）
 - 显示进度、速度、剩余时间，可取消
-- 前台下载服务：下载时可退出 App，通知栏常驻
-- 保存到公共 Download 目录
+- 前台下载服务：下载时可退出 App，通知栏常驻；服务失败会自动改用应用内下载重试
+- 日志支持手指滚动和一键复制；后台服务出错时可以查看服务日志
 - 中文界面，内置中文字体
 - 无广告、无内购
 
@@ -39,7 +41,8 @@ APK 约 48–55 MB（包含 Python、Kivy、yt-dlp、FFmpeg、QuickJS 和中文�
 1. 在浏览器里复制视频页面链接，或在分享菜单里选择「万能视频下载器」
 2. 打开 App，点「粘贴」，再点「解析」
 3. 在视频列表里勾选要下载的条目，点「下载选中」
-4. 下载完成后到 `Download/UniversalVideoDownloader` 查看文件
+4. 默认保存到 `Download/UniversalVideoDownloader`；在「下载设置」里点「更改」可以选择其他目录
+5. 下载失败时先看日志；点「服务日志」可以查看后台服务的详细错误
 
 App 不单独设置代理。手机开启全局/TUN 模式的代理后，yt-dlp 会自动走系统网络。
 
@@ -47,13 +50,13 @@ App 不单独设置代理。手机开启全局/TUN 模式的代理后，yt-dlp �
 
 ## 登录内容
 
-有些视频需要登录才能访问。解析或下载失败且提示需要登录时，App 会弹窗询问：
+有些视频需要登录才能访问。登录 / cookies 默认收在折叠栏里，遇到需要登录的视频时会自动展开并询问：
 
-- 可以直接在 App 内打开站点登录页，登录完成后点「完成登录」。App 不接触账号密码，只保存 cookies。
+- 同意后会在 App 内打开一个独立的站点登录页，登录完成后点「完成登录」。App 不接触账号密码，只保存 cookies。
 - 也可以导入浏览器导出的 `cookies.txt`。
 - 不想登录时，App 会明确提示该视频无法下载。
 
-cookies 只保存在本机，不会上传。Google 账号可能被 WebView 限制，建议使用 cookies.txt 兜底。
+登录页是独立的 Android Activity，不叠加在 Kivy 窗口上，避免卡死或闪退。cookies 只保存在本机，不会上传。Google 账号可能被登录页限制，建议使用 cookies.txt 兜底。
 
 ## 支持的站点
 
@@ -62,8 +65,9 @@ cookies 只保存在本机，不会上传。Google 账号可能被 WebView 限�
 ## 已知限制
 
 - 已内置 FFmpeg，可以合并高清 DASH 音视频并转 MP3。个别站点下不到最高画质时，通常是因为需要登录或站点解析限制。
-- 已提供 App 内登录页；Google 系账号可能被 WebView 拒绝，可用 cookies.txt 兜底。
+- 已提供 App 内独立登录页；Google 系账号可能被登录页拒绝，可用 cookies.txt 兜底。
 - 已实现前台下载服务：下载时可以退出 App，通知栏常驻。部分国产系统的省电策略仍可能限制后台服务，必要时在系统设置里允许本应用自启动/后台运行。
+- 服务下载失败时，App 会自动改用应用内下载重试；仍然失败时，日志里会保留具体错误，点「服务日志」可看后台服务日志。
 - 已内置 QuickJS 处理 YouTube 的 JS challenge；个别视频仍可能受 YouTube 客户端策略影响。
 - 当前只构建了 `arm64-v8a`，32 位老手机无法安装。
 
@@ -72,8 +76,8 @@ cookies 只保存在本机，不会上传。Google 账号可能被 WebView 限�
 GitHub Actions 会在推送 `main` 或 `v*` 标签时构建 APK。公开仓库的 Actions 免费，构建和 Releases 分发都不产生费用。
 
 ```bash
-git tag v0.7.0
-git push origin v0.7.0
+git tag v0.8.0
+git push origin v0.8.0
 ```
 
 本地构建需要 Linux 或 WSL，Windows 不能直接运行 Buildozer：
@@ -96,10 +100,16 @@ buildozer -v android debug
 universal-video-downloader/
 ├── main.py                    # Kivy 界面和下载逻辑
 ├── app.kv                     # 界面布局
+├── service.py                 # Android 前台下载服务
+├── java/.../LoginActivity.java # 独立登录页
 ├── buildozer.spec             # Android 打包配置
 ├── local_recipes/kivy/        # Kivy recipe override（去掉 requests 依赖）
 ├── scripts/fetch_font.py      # 构建前下载中文字体
+├── scripts/build_ffmpeg.sh    # 构建静态 FFmpeg
+├── scripts/build_quickjs.sh   # 构建 QuickJS-ng
 ├── assets/fonts/              # 字体和许可证（字体构建时下载）
+├── intent_filters.xml         # 浏览器分享接收
+├── mascot.png                 # 界面小吉祥物
 ├── icon.png
 ├── screenshot.png
 ├── requirements.txt
@@ -117,7 +127,7 @@ universal-video-downloader/
 
 **下载不到最高画质？** 先确认该视频是否需要登录；需要时导入 cookies.txt。DRM 站点仍然不支持。
 
-**文件保存在哪？** 默认在 `Download/UniversalVideoDownloader`。如果没有授予“所有文件访问”，会保存到 App 私有目录，具体路径显示在界面上。
+**文件保存在哪？** 默认在 `Download/UniversalVideoDownloader`。可以在「下载设置」里点「更改」选择其他目录；如果没有授予“所有文件访问”，部分目录可能不可写。
 
 遇到问题可以在 [Issues](https://github.com/Benicio2026/universal-video-downloader/issues) 里反馈。
 

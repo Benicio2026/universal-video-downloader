@@ -7,8 +7,12 @@ service_progress.json；App 关闭后服务仍可继续。
 """
 
 import json
+import os
 import re
+import subprocess
+import sys
 import time
+import traceback
 from pathlib import Path
 
 import yt_dlp
@@ -16,6 +20,25 @@ from yt_dlp.utils import DownloadCancelled
 from jnius import autoclass
 
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+class ServiceLogger:
+    """把 yt-dlp 的警告/错误写进 service.log，便于在 App 里查看。"""
+
+    def __init__(self, log_fn):
+        self.log_fn = log_fn
+
+    def debug(self, msg):
+        pass
+
+    def info(self, msg):
+        self.log_fn(str(msg))
+
+    def warning(self, msg):
+        self.log_fn("警告：" + str(msg))
+
+    def error(self, msg):
+        self.log_fn("错误：" + str(msg))
 
 
 def format_for(quality, has_ffmpeg):
@@ -84,6 +107,11 @@ def main():
             pass
 
     try:
+        if log_path.exists() and log_path.stat().st_size > 300_000:
+            try:
+                log_path.unlink()
+            except Exception:
+                pass
         job = json.loads(job_path.read_text(encoding="utf-8"))
         entries = job.get("entries") or []
         quality = job.get("quality") or "最佳画质（自动）"
@@ -96,6 +124,49 @@ def main():
         success = 0
         fail = 0
         cancelled = False
+        last_error = ""
+        failed = []
+
+        log(
+            "服务启动 | python=%s | yt-dlp=%s | entries=%s | quality=%s"
+            % (
+                sys.version.split()[0],
+                yt_dlp.version.__version__,
+                total,
+                quality,
+            )
+        )
+        log("保存目录：%s" % outdir)
+        log("FFmpeg：%s | QuickJS：%s" % (ffmpeg, qjs))
+        if ffmpeg:
+            log(
+                "FFmpeg 检查：exists=%s executable=%s"
+                % (os.path.exists(ffmpeg), os.access(ffmpeg, os.X_OK))
+            )
+            try:
+                probe = subprocess.run(
+                    [ffmpeg, "-version"],
+                    capture_output=True,
+                    text=True,
+                    timeout=20,
+                )
+                probe_out = (
+                    (probe.stdout or "")
+                    + "\n"
+                    + (probe.stderr or "")
+                ).strip()
+                log(
+                    "FFmpeg 自检 rc=%s：%s"
+                    % (probe.returncode, probe_out[:500])
+                )
+                if probe.returncode != 0:
+                    ffmpeg = None
+                    log("FFmpeg 不可用，改用单文件格式")
+            except Exception as exc:
+                ffmpeg = None
+                log(
+                    "FFmpeg 自检异常：%s；改用单文件格式" % exc
+                )
 
         def is_cancelled():
             return cancel_path.exists()
@@ -162,6 +233,7 @@ def main():
                 "noprogress": True,
                 "quiet": True,
                 "no_warnings": False,
+                "logger": ServiceLogger(log),
                 "progress_hooks": [progress_hook],
                 "windowsfilenames": True,
                 "consoletitle": False,
@@ -201,7 +273,16 @@ def main():
                 break
             except Exception as exc:
                 fail += 1
+                last_error = f"{title}: {exc}"
+                failed.append(
+                    {
+                        "url": entry.get("url"),
+                        "title": title,
+                        "error": str(exc),
+                    }
+                )
                 log(f"失败：{title} - {exc}")
+                log(traceback.format_exc())
                 write_progress(
                     {
                         "status": "error_item",
@@ -209,6 +290,7 @@ def main():
                         "total": total,
                         "title": title,
                         "error": str(exc),
+                        "last_error": last_error,
                         "success": success,
                         "fail": fail,
                     }
@@ -220,11 +302,21 @@ def main():
                 "success": success,
                 "fail": fail,
                 "total": total,
+                "last_error": last_error,
+                "failed": failed,
             }
         )
     except Exception as exc:
-        write_progress({"status": "error", "error": str(exc)})
+        traceback_text = traceback.format_exc()
+        write_progress(
+            {
+                "status": "error",
+                "error": str(exc),
+                "traceback": traceback_text,
+            }
+        )
         log(f"服务错误：{exc}")
+        log(traceback_text)
     finally:
         if wake_lock is not None:
             try:
