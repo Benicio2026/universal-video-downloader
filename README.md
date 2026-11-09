@@ -12,6 +12,7 @@ Android 视频下载 App。界面用 Kivy 写，下载交给 [yt-dlp](https://gi
 ## 功能
 
 - 粘贴链接后点「解析」，列出页面里的视频条目
+- 支持从浏览器分享链接到 App，自动填入并解析
 - 支持播放列表、合集、多P页面，可勾选单个、多个或全选后批量下载
 - 画质：最佳 / 1080p / 720p / 仅音频 MP3
 - 内置 FFmpeg：自动合并 DASH 音视频，支持 MP3 转码
@@ -33,7 +34,7 @@ APK 约 45–55 MB（包含 Python、Kivy、yt-dlp、FFmpeg 和中文字体）�
 
 ## 使用
 
-1. 在浏览器里复制视频页面链接
+1. 在浏览器里复制视频页面链接，或在分享菜单里选择「万能视频下载器」
 2. 打开 App，点「粘贴」，再点「解析」
 3. 在视频列表里勾选要下载的条目，点「下载选中」
 4. 下载完成后到 `Download/UniversalVideoDownloader` 查看文件
@@ -60,7 +61,7 @@ cookies 只保存在本机，不会上传。Google 账号可能被 WebView 限�
 
 - 已内置 FFmpeg，可以合并高清 DASH 音视频并转 MP3。个别站点下不到最高画质时，通常是因为需要登录或站点解析限制。
 - 已提供 App 内登录页；Google 系账号可能被 WebView 拒绝，可用 cookies.txt 兜底。
-- App 退到后台后下载可能被系统暂停。
+- 下载时会持有部分唤醒锁，尽量避免屏幕休眠；长时间后台下载仍可能被系统暂停，完整前台服务在后续版本。
 - YouTube 的 JS challenge 在手机上可能限制部分画质，后续版本再处理。
 - 当前只构建了 `arm64-v8a`，32 位老手机无法安装。
 
@@ -69,8 +70,8 @@ cookies 只保存在本机，不会上传。Google 账号可能被 WebView 限�
 GitHub Actions 会在推送 `main` 或 `v*` 标签时构建 APK。公开仓库的 Actions 免费，构建和 Releases 分发都不产生费用。
 
 ```bash
-git tag v0.4.0
-git push origin v0.4.0
+git tag v0.5.0
+git push origin v0.5.0
 ```
 
 本地构建需要 Linux 或 WSL，Windows 不能直接运行 Buildozer：

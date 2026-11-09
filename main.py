@@ -33,7 +33,7 @@ import yt_dlp
 from yt_dlp.utils import DownloadCancelled
 
 APP_NAME = "万能视频下载器"
-APP_VERSION = "0.4.0"
+APP_VERSION = "0.5.0"
 QUALITIES = [
     "最佳画质（自动）",
     "1080p 及以下",
@@ -111,6 +111,7 @@ class UniversalDownloaderApp(App):
         self.worker = None
         self.download_dir = None
         self.ffmpeg_path = None
+        self._wake_lock = None
         self.current_title = None
         self.current_label = ""
         self.entries = []
@@ -134,6 +135,7 @@ class UniversalDownloaderApp(App):
             self.log("已加载本机 cookies.txt。")
         if platform == "android":
             self.request_android_permissions()
+            self._bind_share_intent()
 
     def on_pause(self):
         return True
@@ -141,6 +143,51 @@ class UniversalDownloaderApp(App):
     def on_resume(self):
         if platform == "android":
             self.refresh_download_dir()
+
+    # ------------------------------------------------------------ 分享接收
+
+    def _bind_share_intent(self):
+        try:
+            from android import activity
+
+            activity.bind(on_new_intent=self._on_new_intent)
+            self._check_share_intent()
+        except Exception as exc:
+            self.log(f"分享接收不可用：{exc}")
+
+    def _on_new_intent(self, intent):
+        Clock.schedule_once(lambda dt: self._handle_share_intent(intent))
+
+    def _check_share_intent(self):
+        try:
+            from jnius import autoclass
+
+            activity = autoclass("org.kivy.android.PythonActivity").mActivity
+            self._handle_share_intent(activity.getIntent())
+        except Exception:
+            pass
+
+    def _handle_share_intent(self, intent):
+        try:
+            if intent is None:
+                return
+            action = intent.getAction()
+            if action is None or "android.intent.action.SEND" not in str(action):
+                return
+            text = intent.getStringExtra("android.intent.extra.TEXT")
+            if not text:
+                return
+            match = re.search(r"https?://\S+", text)
+            if not match:
+                self.log("分享内容里没有可识别的链接。")
+                return
+            url = match.group(0).rstrip(".,;)]}>\"'")
+            self.root.ids.url_input.text = url
+            self.log("收到分享链接：" + url)
+            if not self.busy:
+                Clock.schedule_once(lambda dt: self.parse_url(), 0.4)
+        except Exception as exc:
+            self.log(f"读取分享内容失败：{exc}")
 
     # ------------------------------------------------------------ 存储 / 权限
 
@@ -227,6 +274,29 @@ class UniversalDownloaderApp(App):
         if platform == "android":
             try:
                 Window.keep_screen_on = bool(busy)
+            except Exception:
+                pass
+            try:
+                from jnius import autoclass
+
+                PythonActivity = autoclass("org.kivy.android.PythonActivity")
+                Context = autoclass("android.content.Context")
+                PowerManager = autoclass("android.os.PowerManager")
+                context = PythonActivity.mActivity
+                if busy:
+                    if self._wake_lock is None:
+                        pm = context.getSystemService(Context.POWER_SERVICE)
+                        self._wake_lock = pm.newWakeLock(
+                            PowerManager.PARTIAL_WAKE_LOCK,
+                            "UniversalVideoDownloader:download",
+                        )
+                        self._wake_lock.acquire()
+                elif self._wake_lock is not None:
+                    try:
+                        self._wake_lock.release()
+                    except Exception:
+                        pass
+                    self._wake_lock = None
             except Exception:
                 pass
 
