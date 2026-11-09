@@ -6,6 +6,7 @@
 界面、交互与打包逻辑为本项目原创。
 """
 
+import html
 import json
 import os
 import re
@@ -13,6 +14,9 @@ import shutil
 import subprocess
 import threading
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -38,7 +42,7 @@ import yt_dlp
 from yt_dlp.utils import DownloadCancelled
 
 APP_NAME = "万能视频下载器"
-APP_VERSION = "0.8.0"
+APP_VERSION = "0.9.0"
 QUALITIES = [
     "最佳画质（自动）",
     "1080p 及以下",
@@ -46,6 +50,35 @@ QUALITIES = [
     "仅音频",
 ]
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+PLATFORM_ALIASES = {
+    "bilibili": [
+        "bilibili", "b站", "哔哩哔哩", "哔哩", "小破站", "bili", "bilbil",
+    ],
+    "youtube": ["youtube", "油管", "you tube", "yt", "y2b"],
+    "douyin": ["douyin", "抖音", "抖y", "dy"],
+    "kuaishou": ["kuaishou", "快手"],
+    "xiaohongshu": ["xiaohongshu", "小红书", "xhs", "红书"],
+    "weibo": ["weibo", "微博"],
+    "tiktok": ["tiktok", "抖音国际版", "海外抖音"],
+    "twitter": ["twitter", "推特", "x"],
+}
+
+
+def normalize_platform(text):
+    raw = str(text or "").strip().lower()
+    if not raw:
+        return ""
+    compact = re.sub(r"\s+", "", raw)
+    for key, aliases in PLATFORM_ALIASES.items():
+        for alias in aliases:
+            if compact == re.sub(r"\s+", "", alias.lower()):
+                return key
+    for key, aliases in PLATFORM_ALIASES.items():
+        for alias in aliases:
+            token = re.sub(r"\s+", "", alias.lower())
+            if len(token) >= 2 and token in compact:
+                return key
+    return ""
 
 
 def register_cjk_font():
@@ -114,6 +147,8 @@ class UniversalDownloaderApp(App):
     download_dir_text = StringProperty("")
     list_summary = StringProperty("尚未解析")
     log_text = StringProperty("")
+    search_status = StringProperty("")
+    sniffer_status = StringProperty("悬浮嗅探未开启")
     use_service = BooleanProperty(True)
     login_expanded = BooleanProperty(False)
     login_notice = StringProperty("")
@@ -154,6 +189,9 @@ class UniversalDownloaderApp(App):
         self._last_quality = ""
         self._fallback_running = False
         self._service_last_error = ""
+        self._searching = False
+        self._bili_cookie = None
+        self._sniffer_running = False
         self._config = {}
         self._config_loaded = False
         self._load_config()
@@ -186,6 +224,7 @@ class UniversalDownloaderApp(App):
             self.log("前台服务下载：" + ("开启" if self.use_service else "关闭"))
             self.request_android_permissions()
             self._refresh_service_paths()
+            self._refresh_sniffer_status()
             self._bind_share_intent()
             self._resume_service_if_running()
 
@@ -242,6 +281,8 @@ class UniversalDownloaderApp(App):
             self.log(f"分享接收不可用：{exc}")
 
     def _on_new_intent(self, intent):
+        if self._handle_sniff_intent(intent):
+            return
         Clock.schedule_once(lambda dt: self._handle_share_intent(intent))
 
     def _check_share_intent(self):
@@ -249,9 +290,134 @@ class UniversalDownloaderApp(App):
             from jnius import autoclass
 
             activity = autoclass("org.kivy.android.PythonActivity").mActivity
-            self._handle_share_intent(activity.getIntent())
+            intent = activity.getIntent()
+            if self._handle_sniff_intent(intent):
+                return
+            self._handle_share_intent(intent)
         except Exception:
             pass
+
+    def _handle_sniff_intent(self, intent):
+        try:
+            if intent is None:
+                return False
+            if not intent.getBooleanExtra("sniff", False):
+                return False
+            self.log("收到悬浮嗅探请求。")
+            Clock.schedule_once(
+                lambda dt: self.sniff_clipboard(), 0.6
+            )
+            return True
+        except Exception:
+            return False
+
+    def sniff_clipboard(self):
+        try:
+            text = Clipboard.paste() or ""
+        except Exception:
+            text = ""
+        match = re.search(r"https?://\S+", text)
+        if not match:
+            self.status = "剪贴板里没有视频链接"
+            self.log(
+                "悬浮嗅探：剪贴板里没有链接。"
+                "先在别的 App 里复制视频链接，再点“寻”气泡。"
+            )
+            return
+        url = match.group(0).rstrip(".,;)]}>\"'")
+        self.root.ids.url_input.text = url
+        self.log("从剪贴板嗅探到：" + url)
+        if not self.busy:
+            Clock.schedule_once(lambda dt: self.parse_url(), 0.3)
+
+    # ------------------------------------------------------------ 悬浮嗅探
+
+    def _refresh_sniffer_status(self):
+        try:
+            flag = self._service_files_dir / "sniffer.flag"
+            self._sniffer_running = flag.exists()
+            self.sniffer_status = (
+                "悬浮嗅探已开启（长按气泡关闭）"
+                if self._sniffer_running
+                else "悬浮嗅探未开启"
+            )
+        except Exception:
+            pass
+
+    def toggle_sniffer(self):
+        if platform != "android":
+            self.log("悬浮嗅探只在 Android 上可用。")
+            return
+        if self._sniffer_running:
+            self._stop_sniffer_service()
+            return
+        try:
+            from jnius import autoclass
+
+            Settings = autoclass("android.provider.Settings")
+            Intent = autoclass("android.content.Intent")
+            Uri = autoclass("android.net.Uri")
+            PythonActivity = autoclass(
+                "org.kivy.android.PythonActivity"
+            )
+            activity = PythonActivity.mActivity
+            if not Settings.canDrawOverlays(activity):
+                intent = Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION
+                )
+                intent.setData(
+                    Uri.parse(
+                        "package:" + activity.getPackageName()
+                    )
+                )
+                activity.startActivity(intent)
+                self.status = "请授予“显示在其他应用上层”权限"
+                self.log(
+                    "请先允许“显示在其他应用上层”，"
+                    "返回后再点一次“悬浮嗅探”。"
+                )
+                return
+            ServiceSniffer = autoclass(
+                "org.universalvideo.universalvideodownloader."
+                "ServiceSniffer"
+            )
+            ServiceSniffer.start(activity, "")
+            self._sniffer_running = True
+            self.sniffer_status = "悬浮嗅探已开启（长按气泡关闭）"
+            self.status = "悬浮嗅探已开启"
+            self.log(
+                "悬浮嗅探已开启：在 B站等 App 里复制视频链接，"
+                "点屏幕上的“寻”气泡即可自动解析。"
+            )
+        except Exception as exc:
+            self.log(f"开启悬浮嗅探失败：{exc}")
+            self.status = "悬浮嗅探开启失败"
+
+    def _stop_sniffer_service(self):
+        try:
+            from jnius import autoclass
+
+            PythonActivity = autoclass(
+                "org.kivy.android.PythonActivity"
+            )
+            ServiceSniffer = autoclass(
+                "org.universalvideo.universalvideodownloader."
+                "ServiceSniffer"
+            )
+            activity = PythonActivity.mActivity
+            try:
+                ServiceSniffer.stop(activity)
+            except Exception:
+                Intent = autoclass("android.content.Intent")
+                activity.stopService(
+                    Intent(activity, ServiceSniffer)
+                )
+            self._sniffer_running = False
+            self.sniffer_status = "悬浮嗅探未开启"
+            self.status = "悬浮嗅探已关闭"
+            self.log("悬浮嗅探已关闭。")
+        except Exception as exc:
+            self.log(f"关闭悬浮嗅探失败：{exc}")
 
     def _handle_share_intent(self, intent):
         try:
@@ -1049,6 +1215,313 @@ class UniversalDownloaderApp(App):
             url = "https://" + url
             self.root.ids.url_input.text = url
         return url
+
+    # ------------------------------------------------------------ 按标题搜索
+
+    def search_by_title(self):
+        if self._searching:
+            return
+        try:
+            platform_text = self.root.ids.search_platform_input.text.strip()
+            title = self.root.ids.search_title_input.text.strip()
+        except Exception:
+            return
+        if not title:
+            self.status = "请输入视频标题"
+            return
+        platform = normalize_platform(platform_text)
+        if platform_text and not platform:
+            self.search_status = (
+                "暂时只支持 B站 / YouTube 的标题搜索；"
+                "其他平台请粘贴链接"
+            )
+            self.log(self.search_status)
+            return
+        self._searching = True
+        self.search_status = "搜索中…"
+        self.log("—" * 30)
+        self.log(
+            "按标题搜索："
+            + title
+            + "（平台："
+            + (platform_text or "自动")
+            + "）"
+        )
+        threading.Thread(
+            target=self._search_worker,
+            args=(platform, title),
+            daemon=True,
+        ).start()
+
+    def _search_worker(self, platform, title):
+        results = []
+        errors = []
+        if platform in ("", "bilibili"):
+            try:
+                results.extend(self._search_bilibili(title))
+            except Exception as exc:
+                errors.append("B站：" + str(exc))
+                self.log("B站搜索失败：" + str(exc))
+        if platform in ("", "youtube"):
+            try:
+                results.extend(self._search_youtube(title))
+            except Exception as exc:
+                errors.append("YouTube：" + str(exc))
+                self.log("YouTube 搜索失败：" + str(exc))
+        if platform not in ("", "bilibili", "youtube"):
+            errors.append("暂不支持该平台的标题搜索")
+        Clock.schedule_once(
+            lambda dt: self._on_search_done(results, errors)
+        )
+
+    def _search_bilibili(self, title):
+        import certifi
+        import ssl
+
+        context = ssl.create_default_context(cafile=certifi.where())
+        cookie = self._get_bilibili_cookie(context)
+        query = urllib.parse.quote(title)
+        url = (
+            "https://api.bilibili.com/x/web-interface/search/type"
+            "?search_type=video&keyword=" + query
+        )
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/126.0 Safari/537.36"
+            ),
+            "Referer": "https://www.bilibili.com/",
+            "Accept": "application/json, text/plain, */*",
+        }
+        if cookie:
+            headers["Cookie"] = cookie
+        request = urllib.request.Request(url, headers=headers)
+        try:
+            with urllib.request.urlopen(
+                request, timeout=30, context=context
+            ) as response:
+                data = json.loads(
+                    response.read().decode("utf-8", errors="replace")
+                )
+        except urllib.error.HTTPError as exc:
+            if exc.code != 412:
+                raise
+            self._bili_cookie = None
+            cookie = self._get_bilibili_cookie(context, refresh=True)
+            if cookie:
+                headers["Cookie"] = cookie
+            request = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(
+                request, timeout=30, context=context
+            ) as response:
+                data = json.loads(
+                    response.read().decode("utf-8", errors="replace")
+                )
+        if data.get("code") != 0:
+            raise RuntimeError(
+                str(data.get("message") or data.get("code"))
+            )
+        items = (data.get("data") or {}).get("result") or []
+        results = []
+        for item in items[:12]:
+            bvid = item.get("bvid")
+            if not bvid:
+                continue
+            raw_title = item.get("title") or ""
+            clean_title = html.unescape(
+                re.sub(r"<[^>]+>", "", raw_title)
+            ).strip()
+            pubdate = item.get("pubdate")
+            try:
+                date = time.strftime(
+                    "%Y-%m-%d", time.localtime(int(pubdate))
+                )
+            except (TypeError, ValueError):
+                date = ""
+            results.append(
+                {
+                    "platform": "B站",
+                    "url": "https://www.bilibili.com/video/" + bvid,
+                    "title": clean_title,
+                    "uploader": html.unescape(
+                        re.sub(r"<[^>]+>", "", item.get("author") or "")
+                    ),
+                    "date": date,
+                    "duration": str(item.get("duration") or ""),
+                }
+            )
+        return results
+
+    def _get_bilibili_cookie(self, context, refresh=False):
+        if self._bili_cookie and not refresh:
+            return self._bili_cookie
+        request = urllib.request.Request(
+            "https://api.bilibili.com/x/frontend/finger/spi",
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/126.0 Safari/537.36"
+                ),
+                "Referer": "https://www.bilibili.com/",
+            },
+        )
+        with urllib.request.urlopen(
+            request, timeout=20, context=context
+        ) as response:
+            data = json.loads(
+                response.read().decode("utf-8", errors="replace")
+            )
+        payload = data.get("data") or {}
+        b3 = payload.get("b_3") or ""
+        b4 = payload.get("b_4") or ""
+        if b3:
+            self._bili_cookie = f"buvid3={b3}; buvid4={b4}"
+        return self._bili_cookie
+
+    def _search_youtube(self, title):
+        opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "skip_download": True,
+            "extract_flat": True,
+            "noplaylist": True,
+        }
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(
+                "ytsearch10:" + title, download=False
+            )
+        entries = (info or {}).get("entries") or []
+        results = []
+        for item in entries[:10]:
+            if not item:
+                continue
+            video_id = item.get("id")
+            url = item.get("webpage_url") or item.get("url")
+            if not url and video_id:
+                url = (
+                    "https://www.youtube.com/watch?v=" + str(video_id)
+                )
+            if not url:
+                continue
+            timestamp = (
+                item.get("timestamp")
+                or item.get("release_timestamp")
+            )
+            try:
+                date = time.strftime(
+                    "%Y-%m-%d", time.localtime(int(timestamp))
+                )
+            except (TypeError, ValueError):
+                date = ""
+            results.append(
+                {
+                    "platform": "YouTube",
+                    "url": url,
+                    "title": item.get("title") or "",
+                    "uploader": item.get("uploader")
+                    or item.get("channel")
+                    or "",
+                    "date": date,
+                    "duration": self._format_duration(
+                        item.get("duration")
+                    ),
+                }
+            )
+        return results
+
+    def _on_search_done(self, results, errors):
+        self._searching = False
+        for error in errors:
+            self.log("搜索提示：" + error)
+        if not results:
+            self.search_status = "没有找到结果"
+            if errors:
+                self.search_status += "（" + "；".join(errors) + "）"
+            self.log(self.search_status)
+            return
+        self.search_status = (
+            f"找到 {len(results)} 个结果，点「加入」放进视频列表"
+        )
+        self.log(self.search_status)
+        self._show_search_results(results)
+
+    def _show_search_results(self, results):
+        content = BoxLayout(
+            orientation="vertical", spacing=dp(8), padding=dp(10)
+        )
+        scroll = ScrollView(do_scroll_x=False)
+        box = BoxLayout(
+            orientation="vertical", size_hint_y=None, spacing=dp(6)
+        )
+        box.bind(minimum_height=box.setter("height"))
+        scroll.add_widget(box)
+        content.add_widget(scroll)
+        close_button = Button(
+            text="取消",
+            size_hint_y=None,
+            height=dp(42),
+            background_color=(0.16, 0.22, 0.32, 1),
+        )
+        content.add_widget(close_button)
+        popup = Popup(
+            title="搜索结果", content=content, size_hint=(0.94, 0.86)
+        )
+
+        def add_result(entry):
+            if any(
+                existing.get("url") == entry.get("url")
+                for existing in self.entries
+            ):
+                self.log("该视频已经在列表里。")
+            else:
+                self.entries.append(entry)
+                self._render_entries()
+                self.log("已加入列表：" + entry.get("title", ""))
+                self.status = (
+                    f"已加入列表，共 {len(self.entries)} 个视频"
+                )
+            popup.dismiss()
+
+        for item in results:
+            row = BoxLayout(
+                orientation="horizontal",
+                size_hint_y=None,
+                height=dp(68),
+                spacing=dp(6),
+            )
+            text = (
+                f"[{item.get('platform', '')}] "
+                f"{item.get('title', '')}\n"
+                f"{item.get('uploader', '')} · "
+                f"{item.get('date', '')} · "
+                f"{item.get('duration', '')}"
+            )
+            label = Label(
+                text=text,
+                font_size=dp(11),
+                color=(0.82, 0.86, 0.94, 1),
+                halign="left",
+                valign="middle",
+            )
+            label.bind(
+                size=lambda inst, size: setattr(inst, "text_size", size)
+            )
+            add_button = Button(
+                text="加入",
+                size_hint_x=None,
+                width=dp(58),
+                background_color=(0.23, 0.51, 0.96, 1),
+            )
+            add_button.bind(
+                on_release=lambda _btn, entry=item: add_result(entry)
+            )
+            row.add_widget(label)
+            row.add_widget(add_button)
+            box.add_widget(row)
+        close_button.bind(on_release=lambda _btn: popup.dismiss())
+        popup.open()
 
     # ------------------------------------------------------------ 解析
 
