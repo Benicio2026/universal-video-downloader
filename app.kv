@@ -203,10 +203,18 @@
                         id: quality_spinner
                         text: "最佳画质（自动）"
                         values: ["最佳画质（自动）", "1080p 及以下", "720p 及以下", "仅音频"]
-                GhostButton:
-                    text: "导入 cookies.txt（登录用）"
+                BoxLayout:
+                    size_hint_y: None
                     height: dp(40)
-                    on_release: app.show_cookies_dialog()
+                    spacing: dp(8)
+                    GhostButton:
+                        text: "站内登录"
+                        height: dp(40)
+                        on_release: app.open_login_webview()
+                    GhostButton:
+                        text: "导入 cookies.txt"
+                        height: dp(40)
+                        on_release: app.show_cookies_dialog()
 
             Card:
                 BoxLayout:

@@ -11,6 +11,7 @@ import re
 import shutil
 import threading
 from pathlib import Path
+from urllib.parse import urlparse
 
 from kivy.app import App
 from kivy.clock import Clock
@@ -32,7 +33,7 @@ import yt_dlp
 from yt_dlp.utils import DownloadCancelled
 
 APP_NAME = "万能视频下载器"
-APP_VERSION = "0.3.0"
+APP_VERSION = "0.4.0"
 QUALITIES = [
     "最佳画质（自动）",
     "1080p 及以下",
@@ -652,7 +653,8 @@ class UniversalDownloaderApp(App):
         )
         message = Label(
             text="该视频需要登录才能访问。\n\n"
-            "可以导入浏览器导出的 cookies.txt 后重新解析；"
+            "可以直接在 App 内登录（打开站点登录页，App 不接触账号密码），"
+            "也可以导入浏览器导出的 cookies.txt 后重新解析；"
             "如果不想登录，将无法下载。\n\n"
             "cookies 只保存在本机，不会上传。",
             font_size=dp(13),
@@ -665,8 +667,10 @@ class UniversalDownloaderApp(App):
         buttons = BoxLayout(
             orientation="horizontal", size_hint_y=None, height=dp(44), spacing=dp(8)
         )
-        import_button = Button(text="导入 cookies.txt", background_color=(0.23, 0.51, 0.96, 1))
+        login_button = Button(text="站内登录", background_color=(0.23, 0.51, 0.96, 1))
+        import_button = Button(text="导入 cookies", background_color=(0.16, 0.22, 0.32, 1))
         cancel_button = Button(text="取消", background_color=(0.16, 0.22, 0.32, 1))
+        buttons.add_widget(login_button)
         buttons.add_widget(import_button)
         buttons.add_widget(cancel_button)
         content.add_widget(message)
@@ -674,8 +678,12 @@ class UniversalDownloaderApp(App):
         popup = Popup(
             title="需要登录",
             content=content,
-            size_hint=(0.92, 0.55),
+            size_hint=(0.92, 0.6),
         )
+
+        def do_login(_instance):
+            popup.dismiss()
+            self.open_login_webview()
 
         def do_import(_instance):
             popup.dismiss()
@@ -686,9 +694,213 @@ class UniversalDownloaderApp(App):
             self.status = "该视频需要登录，无法下载"
             self.log("用户选择不登录，已停止。")
 
+        login_button.bind(on_release=do_login)
         import_button.bind(on_release=do_import)
         cancel_button.bind(on_release=do_cancel)
         popup.open()
+
+    def open_login_webview(self):
+        if platform != "android":
+            self.log("桌面端不支持站内登录，请导入 cookies.txt。")
+            self.show_cookies_dialog()
+            return
+        url = self._normalize_url()
+        if not url:
+            self.status = "请先粘贴需要登录的视频链接"
+            return
+        try:
+            from android.runnable import run_on_ui_thread
+            from jnius import PythonJavaClass, autoclass, java_method
+        except Exception as exc:
+            self.log(f"站内登录不可用：{exc}")
+            self.show_cookies_dialog()
+            return
+
+        class ClickListener(PythonJavaClass):
+            __javainterfaces__ = ["android/view/View$OnClickListener"]
+            __javacontext__ = "app"
+
+            def __init__(self, callback):
+                super().__init__()
+                self._callback = callback
+
+            @java_method("(Landroid/view/View;)V")
+            def onClick(self, view):
+                self._callback()
+
+        def remove_overlay():
+            try:
+                overlay = self._login_overlay
+                webview = self._login_webview
+                if overlay is not None:
+                    parent = overlay.getParent()
+                    if parent is not None:
+                        parent.removeView(overlay)
+                if webview is not None:
+                    webview.destroy()
+            except Exception:
+                pass
+            self._login_overlay = None
+            self._login_webview = None
+            self._login_listeners = None
+
+        def on_finish():
+            try:
+                CookieManager = autoclass("android.webkit.CookieManager")
+                cookie = CookieManager.getInstance().getCookie(url)
+                if not cookie:
+                    Toast = autoclass("android.widget.Toast")
+                    PythonActivity = autoclass("org.kivy.android.PythonActivity")
+                    Toast.makeText(
+                        PythonActivity.mActivity,
+                        "没有获取到 cookies，请先完成登录",
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                    return
+                remove_overlay()
+                Clock.schedule_once(
+                    lambda dt: self._save_webview_cookies(cookie, url)
+                )
+            except Exception as exc:
+                remove_overlay()
+                Clock.schedule_once(
+                    lambda dt: self.log(f"读取 cookies 失败：{exc}")
+                )
+
+        def on_cancel():
+            remove_overlay()
+            Clock.schedule_once(lambda dt: self._login_cancelled())
+
+        @run_on_ui_thread
+        def show():
+            try:
+                PythonActivity = autoclass("org.kivy.android.PythonActivity")
+                activity = PythonActivity.mActivity
+                FrameLayout = autoclass("android.widget.FrameLayout")
+                WebView = autoclass("android.webkit.WebView")
+                WebViewClient = autoclass("android.webkit.WebViewClient")
+                LinearLayout = autoclass("android.widget.LinearLayout")
+                Button = autoclass("android.widget.Button")
+                LayoutParams = autoclass("android.view.ViewGroup$LayoutParams")
+                FrameParams = autoclass("android.widget.FrameLayout$LayoutParams")
+                LinearParams = autoclass("android.widget.LinearLayout$LayoutParams")
+                Gravity = autoclass("android.view.Gravity")
+                Color = autoclass("android.graphics.Color")
+                CookieManager = autoclass("android.webkit.CookieManager")
+
+                overlay = FrameLayout(activity)
+                webview = WebView(activity)
+                settings = webview.getSettings()
+                settings.setJavaScriptEnabled(True)
+                settings.setDomStorageEnabled(True)
+                settings.setDatabaseEnabled(True)
+                try:
+                    CookieManager.getInstance().setAcceptThirdPartyCookies(
+                        webview, True
+                    )
+                except Exception:
+                    pass
+                webview.setWebViewClient(WebViewClient())
+                webview.loadUrl(url)
+
+                bar = LinearLayout(activity)
+                bar.setOrientation(0)
+                bar.setBackgroundColor(Color.rgb(30, 41, 59))
+                bar.setPadding(
+                    int(dp(12)), int(dp(12)), int(dp(12)), int(dp(12))
+                )
+
+                finish_button = Button(activity)
+                finish_button.setText("完成登录")
+                finish_button.setTextColor(Color.WHITE)
+                finish_button.setBackgroundColor(Color.rgb(37, 99, 235))
+                finish_button.setAllCaps(False)
+                cancel_button = Button(activity)
+                cancel_button.setText("取消")
+                cancel_button.setTextColor(Color.WHITE)
+                cancel_button.setBackgroundColor(Color.rgb(71, 85, 105))
+                cancel_button.setAllCaps(False)
+
+                finish_listener = ClickListener(on_finish)
+                cancel_listener = ClickListener(on_cancel)
+                finish_button.setOnClickListener(finish_listener)
+                cancel_button.setOnClickListener(cancel_listener)
+                self._login_listeners = (finish_listener, cancel_listener)
+
+                finish_params = LinearParams(0, -2)
+                finish_params.weight = 1.0
+                cancel_params = LinearParams(0, -2)
+                cancel_params.weight = 1.0
+                bar.addView(finish_button, finish_params)
+                bar.addView(cancel_button, cancel_params)
+
+                overlay.addView(webview, FrameParams(-1, -1))
+                bar_params = FrameParams(-1, -2)
+                bar_params.gravity = Gravity.BOTTOM
+                overlay.addView(bar, bar_params)
+                activity.addContentView(overlay, LayoutParams(-1, -1))
+                self._login_overlay = overlay
+                self._login_webview = webview
+                Clock.schedule_once(
+                    lambda dt: self.log(
+                        "已打开站点登录页；登录完成后点底部的“完成登录”。"
+                    )
+                )
+            except Exception as exc:
+                remove_overlay()
+                Clock.schedule_once(
+                    lambda dt: self.log(f"打开登录页失败：{exc}")
+                )
+
+        self._login_overlay = None
+        self._login_webview = None
+        self._login_listeners = None
+        show()
+
+    def _save_webview_cookies(self, cookie_header, url):
+        host = urlparse(url).hostname or ""
+        parts = host.split(".")
+        domain = "." + ".".join(parts[-2:]) if len(parts) >= 2 else host
+        lines = [
+            "# Netscape HTTP Cookie File",
+            "# Generated by Universal Video Downloader",
+            "",
+        ]
+        count = 0
+        for pair in cookie_header.split(";"):
+            pair = pair.strip()
+            if not pair or "=" not in pair:
+                continue
+            name, value = pair.split("=", 1)
+            name = name.strip().replace("\t", " ").replace("\n", " ")
+            value = (
+                value.strip()
+                .replace("\t", " ")
+                .replace("\n", " ")
+                .replace("\r", " ")
+            )
+            if not name:
+                continue
+            lines.append(f"{domain}\tTRUE\t/\tFALSE\t0\t{name}\t{value}")
+            count += 1
+        if count == 0:
+            self.log("没有解析到有效的 cookies。")
+            return
+        try:
+            self.cookies_file.write_text(
+                "\n".join(lines) + "\n", encoding="utf-8"
+            )
+            self.cookies_path = self.cookies_file
+            self.log(f"已保存 {count} 条 cookies，可以重新解析。")
+            self.status = "登录信息已保存"
+            if not self.busy:
+                Clock.schedule_once(lambda dt: self.parse_url(), 0.6)
+        except Exception as exc:
+            self.log(f"保存 cookies 失败：{exc}")
+
+    def _login_cancelled(self):
+        self.status = "已取消登录"
+        self.log("已取消登录。")
 
     def show_cookies_dialog(self):
         content = BoxLayout(

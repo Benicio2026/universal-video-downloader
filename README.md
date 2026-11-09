@@ -15,6 +15,7 @@ Android 视频下载 App。界面用 Kivy 写，下载交给 [yt-dlp](https://gi
 - 支持播放列表、合集、多P页面，可勾选单个、多个或全选后批量下载
 - 画质：最佳 / 1080p / 720p / 仅音频 MP3
 - 内置 FFmpeg：自动合并 DASH 音视频，支持 MP3 转码
+- 需要登录的站点可站内登录（WebView），App 不接触账号密码
 - 显示进度、速度、剩余时间，可取消
 - 保存到公共 Download 目录
 - 中文界面，内置中文字体
@@ -43,7 +44,13 @@ App 不单独设置代理。手机开启全局/TUN 模式的代理后，yt-dlp �
 
 ## 登录内容
 
-有些视频需要登录才能访问。解析或下载失败且提示需要登录时，App 会弹窗询问；你可以导入浏览器导出的 `cookies.txt` 后重新解析。cookies 只保存在本机，不会上传。如果不想登录，App 会明确提示该视频无法下载。
+有些视频需要登录才能访问。解析或下载失败且提示需要登录时，App 会弹窗询问：
+
+- 可以直接在 App 内打开站点登录页，登录完成后点「完成登录」。App 不接触账号密码，只保存 cookies。
+- 也可以导入浏览器导出的 `cookies.txt`。
+- 不想登录时，App 会明确提示该视频无法下载。
+
+cookies 只保存在本机，不会上传。Google 账号可能被 WebView 限制，建议使用 cookies.txt 兜底。
 
 ## 支持的站点
 
@@ -52,7 +59,7 @@ App 不单独设置代理。手机开启全局/TUN 模式的代理后，yt-dlp �
 ## 已知限制
 
 - 已内置 FFmpeg，可以合并高清 DASH 音视频并转 MP3。个别站点下不到最高画质时，通常是因为需要登录或站点解析限制。
-- 登录通过导入 cookies.txt 实现，App 内登录页还在开发中。
+- 已提供 App 内登录页；Google 系账号可能被 WebView 拒绝，可用 cookies.txt 兜底。
 - App 退到后台后下载可能被系统暂停。
 - YouTube 的 JS challenge 在手机上可能限制部分画质，后续版本再处理。
 - 当前只构建了 `arm64-v8a`，32 位老手机无法安装。
@@ -62,8 +69,8 @@ App 不单独设置代理。手机开启全局/TUN 模式的代理后，yt-dlp �
 GitHub Actions 会在推送 `main` 或 `v*` 标签时构建 APK。公开仓库的 Actions 免费，构建和 Releases 分发都不产生费用。
 
 ```bash
-git tag v0.3.0
-git push origin v0.3.0
+git tag v0.4.0
+git push origin v0.4.0
 ```
 
 本地构建需要 Linux 或 WSL，Windows 不能直接运行 Buildozer：
