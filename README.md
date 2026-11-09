@@ -28,7 +28,7 @@ Android 视频下载 App。界面用 Kivy 写，下载交给 [yt-dlp](https://gi
 
 华为、荣耀机型如果开启了纯净模式，需要先允许安装外部来源应用。当前 APK 只包含 `arm64-v8a`，近几年的主流手机都是这个架构。
 
-APK 约 80–110 MB（包含 Python、Kivy、yt-dlp、FFmpeg 和中文字体）。
+APK 约 45–55 MB（包含 Python、Kivy、yt-dlp、FFmpeg 和中文字体）。
 
 ## 使用
 
