@@ -90,6 +90,7 @@ def main():
         outdir = Path(job.get("outdir") or (files_dir / "Downloads"))
         outdir.mkdir(parents=True, exist_ok=True)
         ffmpeg = job.get("ffmpeg")
+        qjs = job.get("qjs")
         cookies = job.get("cookies")
         total = len(entries)
         success = 0
@@ -172,6 +173,8 @@ def main():
                 opts["ffmpeg_location"] = ffmpeg
             if cookies:
                 opts["cookiefile"] = cookies
+            if qjs:
+                opts["js_runtimes"] = {"quickjs": {"path": qjs}}
             return opts
 
         for index, entry in enumerate(entries, 1):

@@ -35,7 +35,7 @@ import yt_dlp
 from yt_dlp.utils import DownloadCancelled
 
 APP_NAME = "万能视频下载器"
-APP_VERSION = "0.6.0"
+APP_VERSION = "0.7.0"
 QUALITIES = [
     "最佳画质（自动）",
     "1080p 及以下",
@@ -113,6 +113,8 @@ class UniversalDownloaderApp(App):
         self.worker = None
         self.download_dir = None
         self.ffmpeg_path = None
+        self.quickjs_path = None
+        self.js_runtimes = None
         self._wake_lock = None
         self._service_active = False
         self._service_started_at = 0.0
@@ -139,8 +141,12 @@ class UniversalDownloaderApp(App):
         self.download_dir = self.get_download_dir()
         self.download_dir_text = str(self.download_dir)
         self.ffmpeg_path = self._find_ffmpeg()
+        self.quickjs_path = self._find_quickjs()
+        self.js_runtimes = self._runtime_config()
         self.log(f"{APP_NAME} v{APP_VERSION} 就绪")
         self.log("下载能力由开源项目 yt-dlp 提供。")
+        if self.quickjs_path:
+            self.log("已加载内置 QuickJS，可处理 YouTube 的 JS challenge。")
         if not self.ffmpeg_path:
             self.log("提示：当前版本未内置 FFmpeg，将优先选择音视频合一的单文件格式。")
         if self.cookies_path:
@@ -323,6 +329,7 @@ class UniversalDownloaderApp(App):
                 "quality": quality,
                 "outdir": str(outdir),
                 "ffmpeg": self.ffmpeg_path,
+                "qjs": self.quickjs_path,
                 "cookies": str(self.cookies_path)
                 if self.cookies_path and self.cookies_path.exists()
                 else None,
@@ -460,6 +467,28 @@ class UniversalDownloaderApp(App):
             except Exception:
                 pass
         return shutil.which("ffmpeg")
+
+    def _find_quickjs(self):
+        if platform == "android":
+            try:
+                from jnius import autoclass
+
+                activity = autoclass("org.kivy.android.PythonActivity").mActivity
+                native_dir = activity.getApplicationInfo().nativeLibraryDir
+                candidate = Path(native_dir) / "libqjs.so"
+                if candidate.exists():
+                    return str(candidate)
+            except Exception:
+                pass
+        return shutil.which("qjs")
+
+    def _runtime_config(self):
+        if self.quickjs_path:
+            return {"quickjs": {"path": self.quickjs_path}}
+        for name in ("deno", "node", "bun"):
+            if shutil.which(name):
+                return {name: {}}
+        return None
 
     def _set_busy(self, busy):
         self.busy = busy
@@ -810,6 +839,8 @@ class UniversalDownloaderApp(App):
             opts["ffmpeg_location"] = self.ffmpeg_path
         if self.cookies_path and self.cookies_path.exists():
             opts["cookiefile"] = str(self.cookies_path)
+        if self.js_runtimes:
+            opts["js_runtimes"] = self.js_runtimes
         return opts
 
     def _download_many_worker(self, entries, quality):

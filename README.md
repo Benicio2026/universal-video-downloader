@@ -16,6 +16,7 @@ Android 视频下载 App。界面用 Kivy 写，下载交给 [yt-dlp](https://gi
 - 支持播放列表、合集、多P页面，可勾选单个、多个或全选后批量下载
 - 画质：最佳 / 1080p / 720p / 仅音频 MP3
 - 内置 FFmpeg：自动合并 DASH 音视频，支持 MP3 转码
+- 内置 QuickJS：处理 YouTube 的 JS challenge，提升可选画质
 - 需要登录的站点可站内登录（WebView），App 不接触账号密码
 - 显示进度、速度、剩余时间，可取消
 - 前台下载服务：下载时可退出 App，通知栏常驻
@@ -31,7 +32,7 @@ Android 视频下载 App。界面用 Kivy 写，下载交给 [yt-dlp](https://gi
 
 华为、荣耀机型如果开启了纯净模式，需要先允许安装外部来源应用。当前 APK 只包含 `arm64-v8a`，近几年的主流手机都是这个架构。
 
-APK 约 45–55 MB（包含 Python、Kivy、yt-dlp、FFmpeg 和中文字体）。
+APK 约 48–55 MB（包含 Python、Kivy、yt-dlp、FFmpeg、QuickJS 和中文字体）。
 
 ## 使用
 
@@ -63,7 +64,7 @@ cookies 只保存在本机，不会上传。Google 账号可能被 WebView 限�
 - 已内置 FFmpeg，可以合并高清 DASH 音视频并转 MP3。个别站点下不到最高画质时，通常是因为需要登录或站点解析限制。
 - 已提供 App 内登录页；Google 系账号可能被 WebView 拒绝，可用 cookies.txt 兜底。
 - 已实现前台下载服务：下载时可以退出 App，通知栏常驻。部分国产系统的省电策略仍可能限制后台服务，必要时在系统设置里允许本应用自启动/后台运行。
-- YouTube 的 JS challenge 在手机上可能限制部分画质，后续版本再处理。
+- 已内置 QuickJS 处理 YouTube 的 JS challenge；个别视频仍可能受 YouTube 客户端策略影响。
 - 当前只构建了 `arm64-v8a`，32 位老手机无法安装。
 
 ## 自己构建
@@ -71,8 +72,8 @@ cookies 只保存在本机，不会上传。Google 账号可能被 WebView 限�
 GitHub Actions 会在推送 `main` 或 `v*` 标签时构建 APK。公开仓库的 Actions 免费，构建和 Releases 分发都不产生费用。
 
 ```bash
-git tag v0.6.0
-git push origin v0.6.0
+git tag v0.7.0
+git push origin v0.7.0
 ```
 
 本地构建需要 Linux 或 WSL，Windows 不能直接运行 Buildozer：
@@ -124,6 +125,7 @@ universal-video-downloader/
 
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp)：解析和下载
 - [FFmpeg](https://ffmpeg.org/)：音视频合并和 MP3 转码
+- [QuickJS-ng](https://github.com/quickjs-ng/quickjs)：处理 YouTube JS challenge
 - [LAME](https://lame.sourceforge.io/)：MP3 编码
 - [Kivy](https://kivy.org/)：界面
 - [python-for-android](https://github.com/kivy/python-for-android)、[Buildozer](https://github.com/kivy/buildozer)：APK 打包

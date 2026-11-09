@@ -13,6 +13,7 @@ to the respective components; the project's own code is MIT-licensed.
 | Noto Sans CJK SC | SIL Open Font License 1.1 | https://github.com/notofonts/noto-cjk |
 | FFmpeg | LGPL (built without `--enable-gpl`) | https://ffmpeg.org/ |
 | LAME | LGPL | https://lame.sourceforge.io/ |
+| QuickJS-ng | MIT | https://github.com/quickjs-ng/quickjs |
 
 ## Fonts
 
@@ -35,6 +36,14 @@ documents the exact configuration.
 
 The FFmpeg build statically links libmp3lame from LAME 3.100 for MP3 encoding.
 LAME is distributed under the LGPL. Source: <https://lame.sourceforge.io/>.
+
+## QuickJS-ng
+
+Starting with v0.7.0, the APK bundles a QuickJS-ng `qjs` executable built for
+Android arm64. It is used by yt-dlp to solve YouTube's JS challenges. QuickJS-ng
+is distributed under the MIT License. Source:
+<https://github.com/quickjs-ng/quickjs>; the build script is
+`scripts/build_quickjs.sh`.
 
 ## yt-dlp
 

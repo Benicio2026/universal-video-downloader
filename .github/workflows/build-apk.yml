@@ -61,6 +61,17 @@ jobs:
         if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
         run: bash scripts/build_ffmpeg.sh
 
+      - name: Cache QuickJS
+        id: quickjs-cache
+        uses: actions/cache@v4
+        with:
+          path: libs/arm64-v8a/libqjs.so
+          key: quickjs-v0.12.0-${{ hashFiles('scripts/build_quickjs.sh') }}
+
+      - name: Build QuickJS
+        if: steps.quickjs-cache.outputs.cache-hit != 'true'
+        run: bash scripts/build_quickjs.sh
+
       - name: Prefetch SDL sources
         run: |
           set -e
