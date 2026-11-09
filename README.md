@@ -78,6 +78,7 @@ universal-video-downloader/
 ├── main.py                    # Kivy 界面和下载逻辑
 ├── app.kv                     # 界面布局
 ├── buildozer.spec             # Android 打包配置
+├── local_recipes/kivy/        # Kivy recipe override（去掉 requests 依赖）
 ├── scripts/fetch_font.py      # 构建前下载中文字体
 ├── assets/fonts/              # 字体和许可证（字体构建时下载）
 ├── icon.png
