@@ -126,14 +126,62 @@
                     hint_text: "粘贴 YouTube / B站 / X / TikTok 等任意视频链接"
                 BoxLayout:
                     size_hint_y: None
-                    height: dp(42)
+                    height: dp(44)
                     spacing: dp(8)
                     GhostButton:
                         text: "粘贴"
+                        height: dp(40)
                         on_release: app.paste_url()
                     GhostButton:
                         text: "清空"
+                        height: dp(40)
                         on_release: app.clear_url()
+                    PrimaryButton:
+                        text: "解析"
+                        height: dp(40)
+                        on_release: app.parse_url()
+
+            Card:
+                BoxLayout:
+                    size_hint_y: None
+                    height: dp(26)
+                    Label:
+                        text: "视频列表"
+                        font_size: dp(12)
+                        bold: True
+                        color: 0.58, 0.64, 0.75, 1
+                        halign: "left"
+                        valign: "middle"
+                        text_size: self.size
+                    Label:
+                        text: app.list_summary
+                        font_size: dp(11)
+                        color: 0.58, 0.64, 0.75, 1
+                        halign: "right"
+                        valign: "middle"
+                        text_size: self.size
+                ScrollView:
+                    size_hint_y: None
+                    height: dp(190)
+                    do_scroll_x: False
+                    BoxLayout:
+                        id: list_container
+                        orientation: "vertical"
+                        size_hint_y: None
+                        height: self.minimum_height
+                        spacing: dp(2)
+                BoxLayout:
+                    size_hint_y: None
+                    height: dp(40)
+                    spacing: dp(8)
+                    GhostButton:
+                        text: "全选"
+                        height: dp(40)
+                        on_release: app.select_all(True)
+                    GhostButton:
+                        text: "取消全选"
+                        height: dp(40)
+                        on_release: app.select_all(False)
 
             Card:
                 SectionLabel:
@@ -155,10 +203,10 @@
                         id: quality_spinner
                         text: "最佳画质（自动）"
                         values: ["最佳画质（自动）", "1080p 及以下", "720p 及以下", "仅音频"]
-                FieldInput:
-                    id: proxy_input
-                    text: app.proxy
-                    hint_text: "代理（可选），例如 http://127.0.0.1:7890"
+                GhostButton:
+                    text: "导入 cookies.txt（登录用）"
+                    height: dp(40)
+                    on_release: app.show_cookies_dialog()
 
             Card:
                 BoxLayout:
@@ -166,7 +214,7 @@
                     height: dp(48)
                     spacing: dp(8)
                     PrimaryButton:
-                        text: "开始下载"
+                        text: "下载选中"
                         on_release: app.start_download()
                     GhostButton:
                         text: "取消"
@@ -204,7 +252,7 @@
                     readonly: True
                     multiline: True
                     size_hint_y: None
-                    height: dp(190)
+                    height: dp(160)
                     font_size: dp(12)
                     padding: dp(10), dp(10)
                     background_normal: ""

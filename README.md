@@ -11,10 +11,10 @@ Android 视频下载 App。界面用 Kivy 写，下载交给 [yt-dlp](https://gi
 
 ## 功能
 
-- 粘贴链接下载
+- 粘贴链接后点「解析」，列出页面里的视频条目
+- 支持播放列表、合集、多P页面，可勾选单个、多个或全选后批量下载
 - 画质：最佳 / 1080p / 720p / 仅音频
 - 显示进度、速度、剩余时间，可取消
-- 代理设置
 - 保存到公共 Download 目录
 - 中文界面，内置中文字体
 - 无广告、无内购
@@ -24,18 +24,23 @@ Android 视频下载 App。界面用 Kivy 写，下载交给 [yt-dlp](https://gi
 1. 从 [Releases](https://github.com/Benicio2026/universal-video-downloader/releases) 下载 APK
 2. 允许安装未知来源应用
 3. 首次启动授予存储权限。Android 11 及以上需要到系统设置里打开“所有文件访问”
-4. 需要访问 YouTube 时，在“代理”栏填写代理地址
 
 华为、荣耀机型如果开启了纯净模式，需要先允许安装外部来源应用。当前 APK 只包含 `arm64-v8a`，近几年的主流手机都是这个架构。
 
 ## 使用
 
 1. 在浏览器里复制视频页面链接
-2. 打开 App，点“粘贴”
-3. 选择画质，点“开始下载”
+2. 打开 App，点「粘贴」，再点「解析」
+3. 在视频列表里勾选要下载的条目，点「下载选中」
 4. 下载完成后到 `Download/UniversalVideoDownloader` 查看文件
 
+App 不单独设置代理。手机开启全局/TUN 模式的代理后，yt-dlp 会自动走系统网络。
+
 浏览器插件（比如猫抓）靠在页面里嗅探视频请求。这个 App 把链接交给 yt-dlp 解析，支持 yt-dlp 收录的站点；使用时需要先复制链接，少了在网页里直接点一下的步骤。
+
+## 登录内容
+
+有些视频需要登录才能访问。解析或下载失败且提示需要登录时，App 会弹窗询问；你可以导入浏览器导出的 `cookies.txt` 后重新解析。cookies 只保存在本机，不会上传。如果不想登录，App 会明确提示该视频无法下载。
 
 ## 支持的站点
 
@@ -44,7 +49,8 @@ Android 视频下载 App。界面用 Kivy 写，下载交给 [yt-dlp](https://gi
 ## 已知限制
 
 - 没有内置 FFmpeg，目前只能下载音视频合一的单文件格式。YouTube、B站的高清 DASH 流需要合并音视频，暂时下不到最高画质；MP3 转码也不可用。
-- 暂不支持 Cookie 登录、会员内容、后台下载、播放列表批量下载。
+- 登录通过导入 cookies.txt 实现，App 内登录页还在开发中。
+- App 退到后台后下载可能被系统暂停。
 - YouTube 的 JS challenge 在手机上可能限制部分画质，后续版本再处理。
 - 当前只构建了 `arm64-v8a`，32 位老手机无法安装。
 
@@ -53,8 +59,8 @@ Android 视频下载 App。界面用 Kivy 写，下载交给 [yt-dlp](https://gi
 GitHub Actions 会在推送 `main` 或 `v*` 标签时构建 APK。公开仓库的 Actions 免费，构建和 Releases 分发都不产生费用。
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
 本地构建需要 Linux 或 WSL，Windows 不能直接运行 Buildozer：
@@ -92,11 +98,11 @@ universal-video-downloader/
 
 **安装时被拦截？** 允许安装未知来源应用；华为、荣耀机型先关闭纯净模式。
 
-**下载报 403 或要求登录？** 这个版本没有 Cookie 支持，部分站点会失败，等下个版本。
+**提示需要登录？** 按弹窗提示导入浏览器导出的 `cookies.txt`，然后重新点「解析」；不登录就下载不了这类视频。
+
+**下载报 403 或 “Sign in to confirm you're not a bot”？** 先确认手机代理已开启且为全局/TUN 模式；仍不行时导入 cookies.txt 后重试。
 
 **下载不到 4K，或者下完打不开？** 这个版本没有 FFmpeg 合并，YouTube 等站点的高清流需要合并音视频，建议选 1080p 及以下。
-
-**下载速度慢？** 在代理栏填写可用的代理地址。
 
 **文件保存在哪？** 默认在 `Download/UniversalVideoDownloader`。如果没有授予“所有文件访问”，会保存到 App 私有目录，具体路径显示在界面上。
 
