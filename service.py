@@ -13,6 +13,7 @@ import subprocess
 import sys
 import time
 import traceback
+from contextlib import contextmanager
 from pathlib import Path
 
 import yt_dlp
@@ -20,6 +21,33 @@ from yt_dlp.utils import DownloadCancelled
 from jnius import autoclass
 
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+ANDROID_SYSTEM_LIBS = (
+    "/system/lib64:/vendor/lib64:/system/lib:/vendor/lib"
+)
+
+
+def ffmpeg_env():
+    env = os.environ.copy()
+    env["LD_LIBRARY_PATH"] = ANDROID_SYSTEM_LIBS
+    env.pop("LD_PRELOAD", None)
+    return env
+
+
+@contextmanager
+def ffmpeg_child_env():
+    old_ld = os.environ.get("LD_LIBRARY_PATH")
+    old_preload = os.environ.get("LD_PRELOAD")
+    os.environ["LD_LIBRARY_PATH"] = ANDROID_SYSTEM_LIBS
+    os.environ.pop("LD_PRELOAD", None)
+    try:
+        yield
+    finally:
+        if old_ld is None:
+            os.environ.pop("LD_LIBRARY_PATH", None)
+        else:
+            os.environ["LD_LIBRARY_PATH"] = old_ld
+        if old_preload is not None:
+            os.environ["LD_PRELOAD"] = old_preload
 
 
 class ServiceLogger:
@@ -149,6 +177,7 @@ def main():
                     capture_output=True,
                     text=True,
                     timeout=20,
+                    env=ffmpeg_env(),
                 )
                 probe_out = (
                     (probe.stdout or "")
@@ -265,8 +294,9 @@ def main():
                 }
             )
             try:
-                with yt_dlp.YoutubeDL(make_opts(index)) as ydl:
-                    ydl.download([entry["url"]])
+                with ffmpeg_child_env():
+                    with yt_dlp.YoutubeDL(make_opts(index)) as ydl:
+                        ydl.download([entry["url"]])
                 success += 1
             except DownloadCancelled:
                 cancelled = True

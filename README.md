@@ -18,6 +18,7 @@ Android 视频下载 App。界面用 Kivy 写，下载交给 [yt-dlp](https://gi
 - 支持播放列表、合集、多P页面，可勾选单个、多个或全选后批量下载
 - 画质：最佳 / 1080p / 720p / 仅音频 MP3
 - 内置 FFmpeg：自动合并 DASH 音视频，支持 MP3 转码
+- FFmpeg 使用系统库路径启动，避开 Android 上的 OpenSSL 符号冲突
 - 内置 QuickJS：处理 YouTube 的 JS challenge，提升可选画质
 - 需要登录时可打开独立登录页，App 不接触账号密码
 - 登录 / cookies 收在折叠栏里，遇到需要登录的视频才展开
@@ -101,8 +102,8 @@ App 不单独设置代理。手机开启全局/TUN 模式的代理后，yt-dlp �
 GitHub Actions 会在推送 `main` 或 `v*` 标签时构建 APK。公开仓库的 Actions 免费，构建和 Releases 分发都不产生费用。
 
 ```bash
-git tag v0.9.1
-git push origin v0.9.1
+git tag v0.9.2
+git push origin v0.9.2
 ```
 
 本地构建需要 Linux 或 WSL，Windows 不能直接运行 Buildozer：

@@ -17,6 +17,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from contextlib import contextmanager
 from pathlib import Path
 
 from kivy.app import App
@@ -27,21 +28,24 @@ from kivy.core.window import Window
 from kivy.lang import Builder
 from kivy.metrics import dp
 from kivy.properties import BooleanProperty, NumericProperty, StringProperty
+from kivy.uix.anchorlayout import AnchorLayout
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
-from kivy.uix.checkbox import CheckBox
+from kivy.uix.behaviors import ButtonBehavior
+from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.textinput import TextInput
+from kivy.uix.widget import Widget
 from kivy.utils import platform
 
 import yt_dlp
 from yt_dlp.utils import DownloadCancelled
 
 APP_NAME = "万能视频下载器"
-APP_VERSION = "0.9.1"
+APP_VERSION = "0.9.2"
 QUALITIES = [
     "最佳画质（自动）",
     "1080p 及以下",
@@ -78,6 +82,44 @@ def normalize_platform(text):
             if len(token) >= 2 and token in compact:
                 return key
     return ""
+
+
+ANDROID_SYSTEM_LIBS = (
+    "/system/lib64:/vendor/lib64:/system/lib:/vendor/lib"
+)
+
+
+def android_ffmpeg_env():
+    env = os.environ.copy()
+    if platform == "android":
+        env["LD_LIBRARY_PATH"] = ANDROID_SYSTEM_LIBS
+        env.pop("LD_PRELOAD", None)
+    return env
+
+
+@contextmanager
+def ffmpeg_child_env():
+    """Run child FFmpeg with system libs only.
+
+    Android's linker otherwise resolves system libsqlite against the app's
+    bundled OpenSSL, which fails with a missing OpenSSL_add_all_algorithms.
+    """
+    if platform != "android":
+        yield
+        return
+    old_ld = os.environ.get("LD_LIBRARY_PATH")
+    old_preload = os.environ.get("LD_PRELOAD")
+    os.environ["LD_LIBRARY_PATH"] = ANDROID_SYSTEM_LIBS
+    os.environ.pop("LD_PRELOAD", None)
+    try:
+        yield
+    finally:
+        if old_ld is None:
+            os.environ.pop("LD_LIBRARY_PATH", None)
+        else:
+            os.environ["LD_LIBRARY_PATH"] = old_ld
+        if old_preload is not None:
+            os.environ["LD_PRELOAD"] = old_preload
 
 
 def register_cjk_font():
@@ -135,8 +177,22 @@ class YTLogger:
         self.app.log("错误：" + msg)
 
 
-class RootWidget(BoxLayout):
+class RootWidget(FloatLayout):
     pass
+
+
+class SoftProgress(Widget):
+    value = NumericProperty(0)
+
+
+class SoftCheck(ButtonBehavior, Widget):
+    active = BooleanProperty(True)
+
+    def on_touch_down(self, touch):
+        if self.collide_point(*touch.pos):
+            self.active = not self.active
+            return True
+        return super().on_touch_down(touch)
 
 
 class UniversalDownloaderApp(App):
@@ -193,6 +249,7 @@ class UniversalDownloaderApp(App):
         self._searching = False
         self._bili_cookie = None
         self._sniffer_running = False
+        self._sniffer_permission_pending = False
         self._config = {}
         self._config_loaded = False
         self._load_config()
@@ -235,6 +292,8 @@ class UniversalDownloaderApp(App):
     def on_resume(self):
         if platform == "android":
             self.refresh_download_dir()
+            if self._sniffer_permission_pending:
+                self._check_sniffer_permission()
 
     # ------------------------------------------------------------ 配置
 
@@ -352,6 +411,89 @@ class UniversalDownloaderApp(App):
         if self._sniffer_running:
             self._stop_sniffer_service()
             return
+        if self._can_draw_overlays():
+            self._start_sniffer_service()
+        else:
+            self._sniffer_permission_pending = True
+            self.sniffer_status = (
+                "需要悬浮窗权限：请在列表里允许「万能视频下载器」"
+            )
+            self.status = "请授予悬浮窗权限"
+            self._show_sniffer_permission_dialog()
+
+    def _can_draw_overlays(self):
+        try:
+            from jnius import autoclass
+
+            Settings = autoclass("android.provider.Settings")
+            activity = autoclass(
+                "org.kivy.android.PythonActivity"
+            ).mActivity
+            return bool(Settings.canDrawOverlays(activity))
+        except Exception:
+            return False
+
+    def _show_sniffer_permission_dialog(self):
+        content = BoxLayout(
+            orientation="vertical", spacing=dp(10), padding=dp(14)
+        )
+        message = Label(
+            text=(
+                "悬浮嗅探需要“显示在其他应用上层”权限。\n\n"
+                "点「去设置」后，在列表里找到「万能视频下载器」"
+                "（也可能显示为 universalvideodownloader），"
+                "打开它的悬浮窗开关，然后返回 App。\n\n"
+                "如果列表里找不到，请到：设置 → 应用 → "
+                "万能视频下载器 → 权限，打开“悬浮窗/显示在其他应用上层”。\n\n"
+                "授权后返回 App 会自动开启，不需要再点一次。"
+            ),
+            font_size=dp(12),
+            halign="left",
+            valign="middle",
+        )
+        message.bind(
+            size=lambda inst, size: setattr(inst, "text_size", size)
+        )
+        buttons = BoxLayout(
+            orientation="horizontal",
+            size_hint_y=None,
+            height=dp(46),
+            spacing=dp(8),
+        )
+        go_button = Button(
+            text="去设置",
+            background_color=(0.96, 0.45, 0.71, 1),
+        )
+        cancel_button = Button(
+            text="取消",
+            background_color=(0.23, 0.16, 0.35, 1),
+        )
+        buttons.add_widget(go_button)
+        buttons.add_widget(cancel_button)
+        content.add_widget(message)
+        content.add_widget(buttons)
+        popup = Popup(
+            title="开启悬浮嗅探",
+            content=content,
+            size_hint=(0.94, 0.62),
+        )
+
+        def do_go(_instance):
+            popup.dismiss()
+            self._open_overlay_settings()
+
+        def do_cancel(_instance):
+            popup.dismiss()
+            self._sniffer_permission_pending = False
+            self.sniffer_status = "悬浮嗅探未开启"
+            self.status = "已取消悬浮窗授权"
+            self.log("已取消悬浮窗授权。")
+
+        go_button.bind(on_release=do_go)
+        cancel_button.bind(on_release=do_cancel)
+        popup.open()
+
+    def _open_overlay_settings(self):
         try:
             from jnius import autoclass
 
@@ -362,26 +504,54 @@ class UniversalDownloaderApp(App):
                 "org.kivy.android.PythonActivity"
             )
             activity = PythonActivity.mActivity
-            if not Settings.canDrawOverlays(activity):
+            package = activity.getPackageName()
+            try:
                 intent = Intent(
                     Settings.ACTION_MANAGE_OVERLAY_PERMISSION
                 )
-                intent.setData(
-                    Uri.parse(
-                        "package:" + activity.getPackageName()
-                    )
-                )
+                intent.setData(Uri.parse("package:" + package))
                 activity.startActivity(intent)
-                self.status = "请授予“显示在其他应用上层”权限"
-                self.log(
-                    "请先允许“显示在其他应用上层”，"
-                    "返回后再点一次“悬浮嗅探”。"
+            except Exception:
+                intent = Intent(
+                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS
                 )
-                return
+                intent.setData(Uri.parse("package:" + package))
+                activity.startActivity(intent)
+            self.log(
+                "已打开悬浮窗权限设置；请找到「万能视频下载器」并允许。"
+            )
+            self.status = (
+                "请在设置中允许「万能视频下载器」的悬浮窗权限"
+            )
+        except Exception as exc:
+            self.log(f"打开悬浮窗权限设置失败：{exc}")
+            self._sniffer_permission_pending = False
+
+    def _check_sniffer_permission(self):
+        if self._can_draw_overlays():
+            self._sniffer_permission_pending = False
+            self.log("悬浮窗权限已授予，正在开启悬浮嗅探…")
+            self._start_sniffer_service()
+        else:
+            self.log(
+                "还没有检测到悬浮窗权限。请在系统设置里找到"
+                "「万能视频下载器」并允许悬浮窗；找不到时去"
+                "设置 → 应用 → 万能视频下载器 → 权限。"
+            )
+            self.status = "请允许「万能视频下载器」的悬浮窗权限"
+
+    def _start_sniffer_service(self):
+        try:
+            from jnius import autoclass
+
+            PythonActivity = autoclass(
+                "org.kivy.android.PythonActivity"
+            )
             ServiceSniffer = autoclass(
                 "org.universalvideo.universalvideodownloader."
                 "ServiceSniffer"
             )
+            activity = PythonActivity.mActivity
             ServiceSniffer.start(activity, "")
             self._sniffer_running = True
             self.sniffer_status = "悬浮嗅探已开启（长按气泡关闭）"
@@ -612,7 +782,7 @@ class UniversalDownloaderApp(App):
                     size_hint_y=None,
                     height=dp(40),
                     background_normal="",
-                    background_color=(0.09, 0.13, 0.21, 1),
+                    background_color=(0.16, 0.11, 0.25, 1),
                     color=(0.85, 0.89, 0.96, 1),
                 )
                 btn.bind(
@@ -665,10 +835,10 @@ class UniversalDownloaderApp(App):
                 size_hint_y=None, height=dp(44), spacing=dp(8)
             )
             ok = Button(
-                text="创建", background_color=(0.23, 0.51, 0.96, 1)
+                text="创建", background_color=(0.96, 0.45, 0.71, 1)
             )
             cancel = Button(
-                text="取消", background_color=(0.16, 0.22, 0.32, 1)
+                text="取消", background_color=(0.24, 0.17, 0.36, 1)
             )
             row.add_widget(ok)
             row.add_widget(cancel)
@@ -702,7 +872,7 @@ class UniversalDownloaderApp(App):
                 text=text,
                 font_size=dp(11),
                 background_normal="",
-                background_color=(0.16, 0.22, 0.32, 1),
+                background_color=(0.24, 0.17, 0.36, 1),
                 color=(0.85, 0.89, 0.96, 1),
             )
             btn.bind(on_release=lambda _btn, target=path: refresh(target))
@@ -1116,6 +1286,7 @@ class UniversalDownloaderApp(App):
                 capture_output=True,
                 text=True,
                 timeout=20,
+                env=android_ffmpeg_env(),
             )
             output = (
                 (proc.stdout or "") + "\n" + (proc.stderr or "")
@@ -1504,7 +1675,7 @@ class UniversalDownloaderApp(App):
             text="取消",
             size_hint_y=None,
             height=dp(42),
-            background_color=(0.16, 0.22, 0.32, 1),
+            background_color=(0.24, 0.17, 0.36, 1),
         )
         content.add_widget(close_button)
         popup = Popup(
@@ -1554,7 +1725,7 @@ class UniversalDownloaderApp(App):
                 text="加入",
                 size_hint_x=None,
                 width=dp(58),
-                background_color=(0.23, 0.51, 0.96, 1),
+                background_color=(0.96, 0.45, 0.71, 1),
             )
             add_button.bind(
                 on_release=lambda _btn, entry=item: add_result(entry)
@@ -1794,8 +1965,15 @@ class UniversalDownloaderApp(App):
                 height=dp(54),
                 spacing=dp(4),
             )
-            checkbox = CheckBox(active=True, size_hint_x=None, width=dp(44))
+            checkbox = SoftCheck(active=True)
             checkbox.bind(active=lambda _inst, _val: self._update_summary())
+            check_holder = AnchorLayout(
+                size_hint_x=None,
+                width=dp(44),
+                anchor_x="center",
+                anchor_y="center",
+            )
+            check_holder.add_widget(checkbox)
             text = entry.get("title") or "未命名视频"
             extra = entry.get("duration") or entry.get("uploader") or ""
             if extra:
@@ -1814,7 +1992,7 @@ class UniversalDownloaderApp(App):
                 width=lambda inst, width: setattr(inst, "text_size", (width, None))
             )
             label.text_size = (label.width or dp(260), None)
-            row.add_widget(checkbox)
+            row.add_widget(check_holder)
             row.add_widget(label)
             container.add_widget(row)
             self.entry_rows.append((entry, checkbox))
@@ -1946,8 +2124,9 @@ class UniversalDownloaderApp(App):
                 lambda dt, i=index, t=total, name=title: self._begin_item(i, t, name)
             )
             try:
-                with yt_dlp.YoutubeDL(self._make_opts(quality)) as ydl:
-                    ydl.download([entry["url"]])
+                with ffmpeg_child_env():
+                    with yt_dlp.YoutubeDL(self._make_opts(quality)) as ydl:
+                        ydl.download([entry["url"]])
                 self.success_count += 1
             except DownloadCancelled:
                 self.cancel_event.set()
@@ -1970,10 +2149,11 @@ class UniversalDownloaderApp(App):
                         )
                     )
                     try:
-                        with yt_dlp.YoutubeDL(
-                            self._make_opts("兼容模式")
-                        ) as ydl:
-                            ydl.download([entry["url"]])
+                        with ffmpeg_child_env():
+                            with yt_dlp.YoutubeDL(
+                                self._make_opts("兼容模式")
+                            ) as ydl:
+                                ydl.download([entry["url"]])
                         self.success_count += 1
                         continue
                     except Exception as retry_exc:
@@ -2121,25 +2301,25 @@ class UniversalDownloaderApp(App):
         )
         login_button = Button(
             text="同意并登录",
-            background_color=(0.23, 0.51, 0.96, 1),
+            background_color=(0.96, 0.45, 0.71, 1),
         )
         import_button = Button(
             text="导入 cookies",
-            background_color=(0.45, 0.3, 0.55, 1),
+            background_color=(0.55, 0.36, 0.68, 1),
         )
         buttons.add_widget(login_button)
         buttons.add_widget(import_button)
         if continue_callback is not None:
             continue_button = Button(
                 text="不登录，继续",
-                background_color=(0.16, 0.22, 0.32, 1),
+                background_color=(0.24, 0.17, 0.36, 1),
             )
             buttons.add_widget(continue_button)
         else:
             continue_button = None
         cancel_button = Button(
             text="取消",
-            background_color=(0.16, 0.22, 0.32, 1),
+            background_color=(0.24, 0.17, 0.36, 1),
         )
         buttons.add_widget(cancel_button)
         content.add_widget(message)
@@ -2296,14 +2476,14 @@ class UniversalDownloaderApp(App):
         text_input = TextInput(
             multiline=True,
             font_size=dp(12),
-            background_color=(0.05, 0.08, 0.15, 1),
+            background_color=(0.10, 0.07, 0.16, 1),
             foreground_color=(0.9, 0.93, 0.98, 1),
         )
         buttons = BoxLayout(
             orientation="horizontal", size_hint_y=None, height=dp(44), spacing=dp(8)
         )
-        save_button = Button(text="保存", background_color=(0.23, 0.51, 0.96, 1))
-        cancel_button = Button(text="取消", background_color=(0.16, 0.22, 0.32, 1))
+        save_button = Button(text="保存", background_color=(0.96, 0.45, 0.71, 1))
+        cancel_button = Button(text="取消", background_color=(0.24, 0.17, 0.36, 1))
         buttons.add_widget(save_button)
         buttons.add_widget(cancel_button)
         content.add_widget(hint)
