@@ -8,6 +8,12 @@
     spacing: dp(10)
     canvas.before:
         Color:
+            rgba: 0, 0, 0, 0.28
+        RoundedRectangle:
+            pos: self.x, self.y - dp(4)
+            size: self.width, self.height
+            radius: [dp(20)]
+        Color:
             rgba: 0.13, 0.09, 0.21, 0.94
         RoundedRectangle:
             pos: self.pos
@@ -64,6 +70,12 @@
     opacity: 0.5 if self.disabled else 1
     canvas.before:
         Color:
+            rgba: 0, 0, 0, 0.25
+        RoundedRectangle:
+            pos: self.x, self.y - dp(2)
+            size: self.size
+            radius: [self.height / 2]
+        Color:
             rgba: 0.96, 0.45, 0.71, 1
         RoundedRectangle:
             pos: self.pos
@@ -80,6 +92,12 @@
     font_size: dp(13)
     opacity: 0.5 if self.disabled else 1
     canvas.before:
+        Color:
+            rgba: 0, 0, 0, 0.22
+        RoundedRectangle:
+            pos: self.x, self.y - dp(2)
+            size: self.size
+            radius: [self.height / 2]
         Color:
             rgba: 0.24, 0.17, 0.36, 1
         RoundedRectangle:
@@ -143,6 +161,15 @@
         pos: root.pos
         fit_mode: "fill"
 
+    Image:
+        id: bg_glow
+        source: "glow_pink.png"
+        size_hint: None, None
+        size: dp(360), dp(360)
+        pos: root.width - dp(320), root.height - dp(330)
+        opacity: 0.35
+        fit_mode: "contain"
+
     BoxLayout:
         orientation: "vertical"
         size: root.size
@@ -152,6 +179,12 @@
             id: header
             size_hint_y: None
             height: dp(84)
+            canvas.after:
+                Color:
+                    rgba: 0, 0, 0, 0.30
+                Rectangle:
+                    pos: self.x, self.y - dp(3)
+                    size: self.width, dp(6)
             Image:
                 source: "header_gradient.png"
                 size_hint: None, None
@@ -180,13 +213,25 @@
                         halign: "left"
                         valign: "middle"
                         text_size: self.size
-                Image:
-                    source: "mascot.png"
+                FloatLayout:
                     size_hint_x: None
                     width: dp(56)
                     size_hint_y: None
                     height: dp(56)
-                    fit_mode: "contain"
+                    Image:
+                        id: mascot_glow
+                        source: "glow_pink.png"
+                        size_hint: None, None
+                        size: dp(84), dp(84)
+                        pos: (self.parent.width - dp(84)) / 2, (self.parent.height - dp(84)) / 2
+                        opacity: 0.45
+                        fit_mode: "contain"
+                    Image:
+                        source: "mascot.png"
+                        size_hint: None, None
+                        size: dp(56), dp(56)
+                        pos: (self.parent.width - dp(56)) / 2, (self.parent.height - dp(56)) / 2
+                        fit_mode: "contain"
 
         ScrollView:
             id: main_scroll

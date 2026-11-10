@@ -20,6 +20,7 @@ import urllib.request
 from contextlib import contextmanager
 from pathlib import Path
 
+from kivy.animation import Animation
 from kivy.app import App
 from kivy.clock import Clock
 from kivy.core.clipboard import Clipboard
@@ -45,7 +46,7 @@ import yt_dlp
 from yt_dlp.utils import DownloadCancelled
 
 APP_NAME = "万能视频下载器"
-APP_VERSION = "0.9.2"
+APP_VERSION = "0.9.3"
 QUALITIES = [
     "最佳画质（自动）",
     "1080p 及以下",
@@ -285,6 +286,37 @@ class UniversalDownloaderApp(App):
             self._refresh_sniffer_status()
             self._bind_share_intent()
             self._resume_service_if_running()
+        self._start_glow_animation()
+
+    def _start_glow_animation(self):
+        targets = []
+        try:
+            targets.append(self.root.ids.bg_glow)
+        except Exception:
+            pass
+        try:
+            targets.append(self.root.ids.mascot_glow)
+        except Exception:
+            pass
+        for index, widget in enumerate(targets):
+            try:
+                duration = 3.2 + index * 0.7
+                animation = (
+                    Animation(
+                        opacity=0.60,
+                        duration=duration,
+                        t="in_out_sine",
+                    )
+                    + Animation(
+                        opacity=0.28,
+                        duration=duration,
+                        t="in_out_sine",
+                    )
+                )
+                animation.repeat = True
+                animation.start(widget)
+            except Exception:
+                pass
 
     def on_pause(self):
         return True
@@ -554,15 +586,63 @@ class UniversalDownloaderApp(App):
             activity = PythonActivity.mActivity
             ServiceSniffer.start(activity, "")
             self._sniffer_running = True
-            self.sniffer_status = "悬浮嗅探已开启（长按气泡关闭）"
-            self.status = "悬浮嗅探已开启"
-            self.log(
-                "悬浮嗅探已开启：在 B站等 App 里复制视频链接，"
-                "点屏幕上的“寻”气泡即可自动解析。"
-            )
+            self.sniffer_status = "正在启动悬浮服务…"
+            self.status = "正在启动悬浮服务…"
+            self.log("悬浮服务已启动，正在创建气泡…")
+            Clock.schedule_once(self._verify_sniffer_started, 2.5)
         except Exception as exc:
             self.log(f"开启悬浮嗅探失败：{exc}")
             self.status = "悬浮嗅探开启失败"
+            self.sniffer_status = "悬浮服务启动失败，请查看日志"
+            try:
+                from jnius import autoclass
+
+                Toast = autoclass("android.widget.Toast")
+                PythonActivity = autoclass(
+                    "org.kivy.android.PythonActivity"
+                )
+                Toast.makeText(
+                    PythonActivity.mActivity,
+                    "悬浮服务启动失败：" + str(exc),
+                    Toast.LENGTH_LONG,
+                ).show()
+            except Exception:
+                pass
+
+    def _verify_sniffer_started(self, dt):
+        if not self._sniffer_running:
+            return
+        flag = self._service_files_dir / "sniffer.flag"
+        if flag.exists():
+            self.sniffer_status = "悬浮嗅探已开启（长按气泡关闭）"
+            self.status = "悬浮嗅探已开启"
+            self.log(
+                "悬浮气泡已创建；如果屏幕上看不到，"
+                "请检查系统是否隐藏了悬浮窗。"
+            )
+            return
+        self._sniffer_running = False
+        self.sniffer_status = "悬浮服务未创建气泡，请点「服务日志」"
+        self.status = "悬浮服务未创建气泡"
+        self.log(
+            "悬浮服务启动后没有写 sniffer.flag，"
+            "可能是创建悬浮窗失败或服务没有启动。"
+            "请点「服务日志」查看 sniffer.log。"
+        )
+        try:
+            from jnius import autoclass
+
+            Toast = autoclass("android.widget.Toast")
+            PythonActivity = autoclass(
+                "org.kivy.android.PythonActivity"
+            )
+            Toast.makeText(
+                PythonActivity.mActivity,
+                "悬浮窗没有创建成功，请点「服务日志」",
+                Toast.LENGTH_LONG,
+            ).show()
+        except Exception:
+            pass
 
     def _stop_sniffer_service(self):
         try:
@@ -1189,25 +1269,37 @@ class UniversalDownloaderApp(App):
         self.worker.start()
 
     def show_service_log(self):
-        path = self._service_files_dir / "service.log"
-        progress = self._service_progress_path
-        text = ""
-        try:
-            text = path.read_text(encoding="utf-8", errors="replace")
-        except Exception:
+        found = False
+        for name in ("service.log", "sniffer.log"):
+            path = self._service_files_dir / name
             try:
-                text = progress.read_text(encoding="utf-8", errors="replace")
+                text = path.read_text(encoding="utf-8", errors="replace")
+            except Exception:
+                continue
+            if not text:
+                continue
+            found = True
+            if len(text) > 20000:
+                text = text[-20000:]
+            self.log("—" * 12 + f" {name}（尾部） " + "—" * 12)
+            for line in text.splitlines()[-250:]:
+                self.log(line)
+        if not found:
+            try:
+                text = self._service_progress_path.read_text(
+                    encoding="utf-8", errors="replace"
+                )
             except Exception:
                 text = ""
-        if not text:
+            if text:
+                found = True
+                self.log("—" * 12 + " service_progress.json " + "—" * 12)
+                for line in text.splitlines()[-100:]:
+                    self.log(line)
+        if not found:
             self.log("没有找到服务日志。")
             self.status = "没有服务日志"
             return
-        if len(text) > 20000:
-            text = text[-20000:]
-        self.log("—" * 18 + " 服务日志（尾部） " + "—" * 18)
-        for line in text.splitlines()[-250:]:
-            self.log(line)
         self.status = "服务日志已输出到日志框"
 
     def _resume_service_if_running(self):

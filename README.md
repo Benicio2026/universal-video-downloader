@@ -66,7 +66,7 @@ APK 约 48–55 MB（包含 Python、Kivy、yt-dlp、FFmpeg、QuickJS 和中文�
 2. 点「寻」气泡，App 会自动打开、读取剪贴板并解析
 3. 长按气泡可以关闭悬浮嗅探
 
-悬浮嗅探只在点击气泡时读取剪贴板，不会在后台持续读取屏幕内容，也不需要无障碍权限。
+悬浮嗅探只在点击气泡时读取剪贴板，不会在后台持续读取屏幕内容，也不需要无障碍权限。服务启动后会自动校验是否创建了气泡；如果没有，会弹 Toast 提示，点「服务日志」可以看到 `sniffer.log` 里的具体原因。
 
 App 不单独设置代理。手机开启全局/TUN 模式的代理后，yt-dlp 会自动走系统网络。
 
@@ -102,8 +102,8 @@ App 不单独设置代理。手机开启全局/TUN 模式的代理后，yt-dlp �
 GitHub Actions 会在推送 `main` 或 `v*` 标签时构建 APK。公开仓库的 Actions 免费，构建和 Releases 分发都不产生费用。
 
 ```bash
-git tag v0.9.2
-git push origin v0.9.2
+git tag v0.9.3
+git push origin v0.9.3
 ```
 
 本地构建需要 Linux 或 WSL，Windows 不能直接运行 Buildozer：

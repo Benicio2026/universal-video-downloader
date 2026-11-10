@@ -8,6 +8,7 @@
 """
 
 import time
+import traceback
 from pathlib import Path
 
 from jnius import PythonJavaClass, autoclass, java_method
@@ -29,6 +30,7 @@ Intent = autoclass("android.content.Intent")
 PythonActivity = autoclass("org.kivy.android.PythonActivity")
 Handler = autoclass("android.os.Handler")
 Looper = autoclass("android.os.Looper")
+Toast = autoclass("android.widget.Toast")
 
 files_dir = Path(service.getFilesDir().getAbsolutePath())
 flag_path = files_dir / "sniffer.flag"
@@ -40,6 +42,13 @@ def log(message):
     try:
         with open(log_path, "a", encoding="utf-8") as handle:
             handle.write(f"[{time.strftime('%H:%M:%S')}] {message}\n")
+    except Exception:
+        pass
+
+
+def toast(message):
+    try:
+        Toast.makeText(service, message, Toast.LENGTH_LONG).show()
     except Exception:
         pass
 
@@ -132,6 +141,7 @@ def open_app():
 
 def setup_overlay():
     try:
+        log("开始创建悬浮窗")
         window_manager = service.getSystemService(
             Context.WINDOW_SERVICE
         )
@@ -187,9 +197,11 @@ def setup_overlay():
         _keep_alive.append(listener)
         _keep_alive.append(view)
         flag_path.write_text("1", encoding="utf-8")
-        log("悬浮嗅探已开启")
+        log("悬浮嗅探已开启，气泡已添加")
+        toast("悬浮嗅探已开启，长按气泡可关闭")
     except Exception as exc:
-        log(f"创建悬浮窗失败：{exc}")
+        log("创建悬浮窗失败：\n" + traceback.format_exc())
+        toast("悬浮窗创建失败：" + str(exc))
         try:
             service.stopSelf()
         except Exception:
@@ -201,6 +213,7 @@ main_handler = Handler(Looper.getMainLooper())
 ui_runnable = UiRunnable(setup_overlay)
 _keep_alive.append(ui_runnable)
 main_handler.post(ui_runnable)
+log("已提交 UI 线程创建悬浮窗任务")
 
 # 保持服务进程存活；Android 前台服务会显示常驻通知。
 while True:
