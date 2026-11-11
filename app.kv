@@ -194,44 +194,23 @@
             BoxLayout:
                 size: header.size
                 pos: header.pos
-                padding: dp(16), dp(8)
-                spacing: dp(8)
-                BoxLayout:
-                    orientation: "vertical"
-                    Label:
-                        text: "万能视频下载器"
-                        font_size: dp(21)
-                        bold: True
-                        color: 1, 1, 1, 1
-                        halign: "left"
-                        valign: "middle"
-                        text_size: self.size
-                    Label:
-                        text: "yt-dlp 引擎 · 一千多个站点 · 小真寻帮你收好视频"
-                        font_size: dp(11)
-                        color: 1, 0.94, 0.98, 1
-                        halign: "left"
-                        valign: "middle"
-                        text_size: self.size
-                FloatLayout:
-                    size_hint_x: None
-                    width: dp(56)
-                    size_hint_y: None
-                    height: dp(56)
-                    Image:
-                        id: mascot_glow
-                        source: "glow_pink.png"
-                        size_hint: None, None
-                        size: dp(84), dp(84)
-                        pos: (self.parent.width - dp(84)) / 2, (self.parent.height - dp(84)) / 2
-                        opacity: 0.45
-                        fit_mode: "contain"
-                    Image:
-                        source: "mascot.png"
-                        size_hint: None, None
-                        size: dp(56), dp(56)
-                        pos: (self.parent.width - dp(56)) / 2, (self.parent.height - dp(56)) / 2
-                        fit_mode: "contain"
+                padding: dp(16), dp(8), dp(80), dp(8)
+                orientation: "vertical"
+                Label:
+                    text: "万能视频下载器"
+                    font_size: dp(21)
+                    bold: True
+                    color: 1, 1, 1, 1
+                    halign: "left"
+                    valign: "middle"
+                    text_size: self.size
+                Label:
+                    text: "yt-dlp 引擎 · 一千多个站点 · 小真寻帮你收好视频"
+                    font_size: dp(11)
+                    color: 1, 0.94, 0.98, 1
+                    halign: "left"
+                    valign: "middle"
+                    text_size: self.size
 
         ScrollView:
             id: main_scroll
@@ -508,3 +487,20 @@
                         text: "复制日志"
                         height: dp(36)
                         on_release: app.copy_log()
+
+    Image:
+        id: mascot_glow
+        source: "glow_pink.png"
+        size_hint: None, None
+        size: dp(84), dp(84)
+        pos: root.width - dp(86), root.height - dp(98) + app.mascot_bob
+        opacity: 0.45
+        fit_mode: "contain"
+
+    Image:
+        id: mascot_image
+        source: "mascot.png"
+        size_hint: None, None
+        size: dp(56), dp(56)
+        pos: root.width - dp(72), root.height - dp(84) + app.mascot_bob
+        fit_mode: "contain"

@@ -46,7 +46,7 @@ import yt_dlp
 from yt_dlp.utils import DownloadCancelled
 
 APP_NAME = "万能视频下载器"
-APP_VERSION = "0.9.3"
+APP_VERSION = "0.9.4"
 QUALITIES = [
     "最佳画质（自动）",
     "1080p 及以下",
@@ -205,6 +205,7 @@ class UniversalDownloaderApp(App):
     log_text = StringProperty("")
     search_status = StringProperty("")
     sniffer_status = StringProperty("悬浮嗅探未开启")
+    mascot_bob = NumericProperty(0)
     use_service = BooleanProperty(True)
     login_expanded = BooleanProperty(False)
     login_notice = StringProperty("")
@@ -287,6 +288,29 @@ class UniversalDownloaderApp(App):
             self._bind_share_intent()
             self._resume_service_if_running()
         self._start_glow_animation()
+        self._layout_tick = Clock.schedule_interval(
+            lambda dt: self._layout_root(), 0.5
+        )
+        Clock.schedule_once(self._stop_layout_tick, 6.0)
+        try:
+            self.root.bind(size=self._on_root_resize)
+        except Exception:
+            pass
+
+    def _stop_layout_tick(self, dt):
+        try:
+            self._layout_tick.cancel()
+        except Exception:
+            pass
+
+    def _layout_root(self):
+        try:
+            self.root.do_layout()
+        except Exception:
+            pass
+
+    def _on_root_resize(self, *args):
+        Clock.schedule_once(lambda dt: self._layout_root(), 0)
 
     def _start_glow_animation(self):
         targets = []
@@ -317,6 +341,23 @@ class UniversalDownloaderApp(App):
                 animation.start(widget)
             except Exception:
                 pass
+        try:
+            bob = (
+                Animation(
+                    mascot_bob=4,
+                    duration=1.8,
+                    t="in_out_sine",
+                )
+                + Animation(
+                    mascot_bob=-3,
+                    duration=1.8,
+                    t="in_out_sine",
+                )
+            )
+            bob.repeat = True
+            bob.start(self)
+        except Exception:
+            pass
 
     def on_pause(self):
         return True
