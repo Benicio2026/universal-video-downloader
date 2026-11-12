@@ -200,7 +200,7 @@ def main():
         def is_cancelled():
             return cancel_path.exists()
 
-        def make_opts(index):
+        def make_opts(index, headers=None):
             fmt, postprocessors = format_for(quality, bool(ffmpeg))
             last_write = [0.0]
 
@@ -276,6 +276,8 @@ def main():
                 opts["cookiefile"] = cookies
             if qjs:
                 opts["js_runtimes"] = {"quickjs": {"path": qjs}}
+            if headers:
+                opts["http_headers"] = dict(headers)
             return opts
 
         for index, entry in enumerate(entries, 1):
@@ -295,7 +297,7 @@ def main():
             )
             try:
                 with ffmpeg_child_env():
-                    with yt_dlp.YoutubeDL(make_opts(index)) as ydl:
+                    with yt_dlp.YoutubeDL(make_opts(index, entry.get("headers"))) as ydl:
                         ydl.download([entry["url"]])
                 success += 1
             except DownloadCancelled:

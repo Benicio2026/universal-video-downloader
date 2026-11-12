@@ -46,7 +46,7 @@ import yt_dlp
 from yt_dlp.utils import DownloadCancelled
 
 APP_NAME = "万能视频下载器"
-APP_VERSION = "0.9.4"
+APP_VERSION = "0.9.5"
 QUALITIES = [
     "最佳画质（自动）",
     "1080p 及以下",
@@ -1093,6 +1093,7 @@ class UniversalDownloaderApp(App):
                     {
                         "url": entry["url"],
                         "title": entry.get("title", ""),
+                        "headers": entry.get("headers") or {},
                     }
                     for entry in entries
                 ],
@@ -1914,6 +1915,15 @@ class UniversalDownloaderApp(App):
             entries = self._entries_from_info(info, url)
             self._last_parse_info = info
             self._parse_requires_login = self._info_requires_login(info)
+            if self._can_fallback(url) and (
+                not entries
+                or self._info_looks_empty(info)
+            ):
+                fallback_entries = self._fallback_embedded(url)
+                if fallback_entries:
+                    entries = fallback_entries
+                    self._parse_requires_login = False
+                    self._parse_login_reason = ""
             if self._parse_requires_login:
                 self._parse_login_reason = (
                     "该视频需要登录才能获取可下载格式。"
@@ -1921,9 +1931,28 @@ class UniversalDownloaderApp(App):
             Clock.schedule_once(lambda dt: self._on_parse_done(entries, None))
         except Exception as exc:
             message = str(exc)
+            self.log(
+                "yt-dlp 解析失败，尝试网页兜底：" + message[:200]
+            )
             if self._is_login_error(message):
                 self._parse_requires_login = True
                 self._parse_login_reason = message
+                Clock.schedule_once(
+                    lambda dt: self._on_parse_done([], message)
+                )
+                return
+            if self._can_fallback(url):
+                fallback_entries = self._fallback_embedded(url)
+                if fallback_entries:
+                    self._parse_requires_login = False
+                    self._parse_login_reason = ""
+                    self._last_parse_info = None
+                    Clock.schedule_once(
+                        lambda dt: self._on_parse_done(
+                            fallback_entries, None
+                        )
+                    )
+                    return
             Clock.schedule_once(lambda dt: self._on_parse_done([], message))
 
     def _entries_from_info(self, info, original_url):
@@ -1976,6 +2005,198 @@ class UniversalDownloaderApp(App):
             self.log(f"条目过多，只显示前 200 个（共 {len(entries)} 个）。")
             entries = entries[:200]
         return entries
+
+    def _fetch_page_html(self, url):
+        import certifi
+        import ssl
+
+        user_agent = (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/126.0 Safari/537.36"
+        )
+        try:
+            context = ssl.create_default_context(cafile=certifi.where())
+        except Exception:
+            context = ssl.create_default_context()
+        request = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": user_agent,
+                "Accept": (
+                    "text/html,application/xhtml+xml,"
+                    "application/xml;q=0.9,*/*;q=0.8"
+                ),
+                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+                "Referer": "https://www.google.com/",
+            },
+        )
+        try:
+            with urllib.request.urlopen(
+                request, timeout=60, context=context
+            ) as response:
+                raw = response.read()
+                charset = (
+                    response.headers.get_content_charset() or "utf-8"
+                )
+            return raw.decode(charset, errors="replace")
+        except Exception as first_error:
+            curl = shutil.which("curl")
+            if not curl:
+                raise first_error
+            command = [
+                curl,
+                "-sSL",
+                "--max-time",
+                "60",
+                "-A",
+                user_agent,
+                "-e",
+                "https://www.google.com/",
+            ]
+            if platform == "win":
+                command.append("--ssl-no-revoke")
+            command.append(url)
+            try:
+                proc = subprocess.run(
+                    command,
+                    capture_output=True,
+                    timeout=90,
+                )
+            except Exception:
+                raise first_error
+            if proc.returncode == 0 and proc.stdout:
+                return proc.stdout.decode("utf-8", errors="replace")
+            raise first_error
+
+    def _can_fallback(self, url):
+        try:
+            host = (
+                urllib.parse.urlparse(url).hostname or ""
+            ).lower()
+        except Exception:
+            return False
+        blocked = (
+            "youtube.com",
+            "youtu.be",
+            "bilibili.com",
+            "b23.tv",
+            "twitter.com",
+            "x.com",
+            "tiktok.com",
+            "douyin.com",
+            "instagram.com",
+            "facebook.com",
+        )
+        return not any(
+            host == item or host.endswith("." + item)
+            for item in blocked
+        )
+
+    def _fallback_embedded(self, url):
+        try:
+            raw = self._fetch_page_html(url)
+        except Exception as exc:
+            self.log("网页兜底解析失败：" + str(exc))
+            return []
+        text = html.unescape(raw)
+        page_title = ""
+        match = re.search(
+            r"<title[^>]*>(.*?)</title>", text, re.I | re.S
+        )
+        if match:
+            page_title = re.sub(
+                r"\s+", " ", match.group(1)
+            ).strip()
+        titles = [
+            html.unescape(item).strip()
+            for item in re.findall(
+                r'data-video_title="([^"]*)"', raw, re.I
+            )
+        ]
+        configs = re.findall(r"config='([^']+)'", text)
+        if not configs:
+            configs = re.findall(r'config="([^"]+)"', text)
+        entries = []
+        seen_paths = set()
+        page_origin = ""
+        try:
+            page_parsed = urllib.parse.urlparse(url)
+            page_origin = (
+                page_parsed.scheme + "://" + page_parsed.netloc
+            )
+        except Exception:
+            pass
+        user_agent = (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/126.0 Safari/537.36"
+        )
+
+        def add_media(media_url, title):
+            if not media_url:
+                return
+            media_url = media_url.replace("\\/", "/").strip()
+            if media_url.startswith("//"):
+                media_url = "https:" + media_url
+            elif not media_url.startswith("http"):
+                media_url = urllib.parse.urljoin(url, media_url)
+            if not re.search(
+                r"\.(?:m3u8|mp4)(?:$|\?)", media_url, re.I
+            ):
+                return
+            parsed = urllib.parse.urlparse(media_url)
+            key = parsed.path or media_url
+            if key in seen_paths:
+                return
+            seen_paths.add(key)
+            entries.append(
+                {
+                    "url": media_url,
+                    "title": title or page_title or "网页视频",
+                    "duration": "",
+                    "uploader": "",
+                    "headers": {
+                        "Referer": url,
+                        "Origin": page_origin,
+                        "User-Agent": user_agent,
+                    },
+                }
+            )
+
+        for index, config in enumerate(configs):
+            try:
+                data = json.loads(config)
+            except Exception:
+                continue
+            video = data.get("video") or {}
+            title = (
+                titles[index]
+                if index < len(titles) and titles[index]
+                else page_title
+            )
+            candidates = []
+            if video.get("url"):
+                candidates.append(video["url"])
+            for item in video.get("urls") or []:
+                if isinstance(item, dict) and item.get("url"):
+                    candidates.append(item["url"])
+            for media_url in candidates:
+                add_media(media_url, title)
+        if not entries:
+            normalized = text.replace("\\/", "/")
+            for media in re.findall(
+                r"https?://[^\"'<>\s]+?\.(?:m3u8|mp4)"
+                r"(?:\?[^\"'<>\s]*)?",
+                normalized,
+                re.I,
+            ):
+                add_media(media, page_title)
+        if entries:
+            self.log(
+                f"网页内嵌播放器兜底：找到 {len(entries)} 个视频。"
+            )
+        return entries[:50]
 
     def _format_duration(self, value):
         if not value:
@@ -2072,6 +2293,21 @@ class UniversalDownloaderApp(App):
         ]
         joined = " ".join(self._parse_warnings).lower()
         return any(key in joined for key in hard_keywords)
+
+    def _info_looks_empty(self, info):
+        if not info:
+            return True
+        if (
+            info.get("_type") == "playlist"
+            or info.get("entries") is not None
+        ):
+            return False
+        formats = [
+            fmt
+            for fmt in (info.get("formats") or [])
+            if isinstance(fmt, dict) and fmt.get("url")
+        ]
+        return not formats and not info.get("url")
 
     # ------------------------------------------------------------ 列表
 
@@ -2219,7 +2455,7 @@ class UniversalDownloaderApp(App):
             return "best[height<=720]/best", []
         return "best", []
 
-    def _make_opts(self, quality):
+    def _make_opts(self, quality, headers=None):
         if self.download_dir is None:
             self.download_dir = self.get_download_dir()
         fmt, postprocessors = self._format_for(quality)
@@ -2245,6 +2481,8 @@ class UniversalDownloaderApp(App):
             opts["cookiefile"] = str(self.cookies_path)
         if self.js_runtimes:
             opts["js_runtimes"] = self.js_runtimes
+        if headers:
+            opts["http_headers"] = dict(headers)
         return opts
 
     def _download_many_worker(self, entries, quality):
@@ -2258,7 +2496,7 @@ class UniversalDownloaderApp(App):
             )
             try:
                 with ffmpeg_child_env():
-                    with yt_dlp.YoutubeDL(self._make_opts(quality)) as ydl:
+                    with yt_dlp.YoutubeDL(self._make_opts(quality, entry.get("headers"))) as ydl:
                         ydl.download([entry["url"]])
                 self.success_count += 1
             except DownloadCancelled:
@@ -2284,7 +2522,9 @@ class UniversalDownloaderApp(App):
                     try:
                         with ffmpeg_child_env():
                             with yt_dlp.YoutubeDL(
-                                self._make_opts("兼容模式")
+                                self._make_opts(
+                                    "兼容模式", entry.get("headers")
+                                )
                             ) as ydl:
                                 ydl.download([entry["url"]])
                         self.success_count += 1
