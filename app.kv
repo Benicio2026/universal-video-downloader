@@ -411,6 +411,16 @@
                             on_release: app.cancel_download()
                     SoftProgress:
                         value: app.progress
+                    Label:
+                        text: app.progress_detail
+                        size_hint_y: None
+                        height: (dp(24) if app.progress_detail else 0)
+                        opacity: 1 if app.progress_detail else 0
+                        font_size: dp(11)
+                        color: 0.82, 0.75, 0.91, 1
+                        halign: "left"
+                        valign: "middle"
+                        text_size: self.size
                     StatusLabel:
                         text: app.status
                     BoxLayout:

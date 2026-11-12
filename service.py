@@ -222,6 +222,34 @@ def main():
                         )
                     except ValueError:
                         percent = 0.0
+                    downloaded = data.get("downloaded_bytes") or 0
+                    total_bytes = (
+                        data.get("total_bytes")
+                        or data.get("total_bytes_estimate")
+                        or 0
+                    )
+                    fragment_index = (
+                        data.get("fragment_index") or 0
+                    )
+                    fragment_count = (
+                        data.get("fragment_count") or 0
+                    )
+                    if total_bytes:
+                        try:
+                            percent = (
+                                downloaded * 100.0 / total_bytes
+                            )
+                        except Exception:
+                            pass
+                    elif fragment_count:
+                        try:
+                            percent = (
+                                fragment_index
+                                * 100.0
+                                / fragment_count
+                            )
+                        except Exception:
+                            pass
                     write_progress(
                         {
                             "status": "progress",
@@ -232,6 +260,10 @@ def main():
                             )
                             or "",
                             "percent": percent,
+                            "downloaded_bytes": downloaded,
+                            "total_bytes": total_bytes,
+                            "fragment_index": fragment_index,
+                            "fragment_count": fragment_count,
                             "speed": ANSI_RE.sub(
                                 "", data.get("_speed_str", "")
                             ).strip(),

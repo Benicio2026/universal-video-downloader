@@ -14,6 +14,7 @@ Android 视频下载 App。界面用 Kivy 写，下载交给 [yt-dlp](https://gi
 - 粘贴链接后点「解析」，列出页面里的视频条目
 - 按标题搜索：输入平台别名（B站/哔哩哔哩/小破站/油管/YouTube 等）和标题，列出结果，显示 UP主、发布时间、时长
 - 网页内嵌播放器兜底：从 HTML/DPlayer 配置里提取 m3u8/mp4，并带 Referer/Origin 请求头
+- 有时效的 m3u8 会在下载前重新获取链接；进度区显示百分比、已下载/总大小、速度、剩余时间、分片进度
 - 悬浮嗅探：在别的 App 里复制视频链接，点屏幕上的「寻」气泡，自动回到 App 解析
 - 支持从浏览器分享链接到 App，自动填入并解析
 - 支持播放列表、合集、多P页面，可勾选单个、多个或全选后批量下载
@@ -104,8 +105,8 @@ App 不单独设置代理。手机开启全局/TUN 模式的代理后，yt-dlp �
 GitHub Actions 会在推送 `main` 或 `v*` 标签时构建 APK。公开仓库的 Actions 免费，构建和 Releases 分发都不产生费用。
 
 ```bash
-git tag v0.9.5
-git push origin v0.9.5
+git tag v0.9.6
+git push origin v0.9.6
 ```
 
 本地构建需要 Linux 或 WSL，Windows 不能直接运行 Buildozer：

@@ -31,6 +31,7 @@ PythonActivity = autoclass("org.kivy.android.PythonActivity")
 Handler = autoclass("android.os.Handler")
 Looper = autoclass("android.os.Looper")
 Toast = autoclass("android.widget.Toast")
+JavaString = autoclass("java.lang.String")
 
 files_dir = Path(service.getFilesDir().getAbsolutePath())
 flag_path = files_dir / "sniffer.flag"
@@ -48,7 +49,7 @@ def log(message):
 
 def toast(message):
     try:
-        Toast.makeText(service, message, Toast.LENGTH_LONG).show()
+        Toast.makeText(service, JavaString(message), Toast.LENGTH_LONG).show()
     except Exception:
         pass
 
@@ -146,7 +147,7 @@ def setup_overlay():
             Context.WINDOW_SERVICE
         )
         view = TextView(service)
-        view.setText("寻")
+        view.setText(JavaString("寻"))
         view.setTextSize(20.0)
         view.setTextColor(Color.WHITE)
         view.setGravity(Gravity.CENTER)

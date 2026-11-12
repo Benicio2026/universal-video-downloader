@@ -46,7 +46,7 @@ import yt_dlp
 from yt_dlp.utils import DownloadCancelled
 
 APP_NAME = "万能视频下载器"
-APP_VERSION = "0.9.5"
+APP_VERSION = "0.9.6"
 QUALITIES = [
     "最佳画质（自动）",
     "1080p 及以下",
@@ -205,6 +205,7 @@ class UniversalDownloaderApp(App):
     log_text = StringProperty("")
     search_status = StringProperty("")
     sniffer_status = StringProperty("悬浮嗅探未开启")
+    progress_detail = StringProperty("")
     mascot_bob = NumericProperty(0)
     use_service = BooleanProperty(True)
     login_expanded = BooleanProperty(False)
@@ -1130,6 +1131,7 @@ class UniversalDownloaderApp(App):
             self._service_last_error = ""
             self._set_busy(True)
             self.progress = 0
+            self.progress_detail = ""
             self.status = f"后台下载 {len(entries)} 个视频…"
             self.log("已交给前台下载服务，退出 App 后仍会继续。")
             Clock.schedule_interval(self._poll_service, 0.5)
@@ -1195,11 +1197,27 @@ class UniversalDownloaderApp(App):
                 self.progress = 0
             speed = data.get("speed") or ""
             eta = data.get("eta") or ""
+            downloaded = data.get("downloaded_bytes") or 0
+            total_bytes = data.get("total_bytes") or 0
+            fragment_index = data.get("fragment_index") or 0
+            fragment_count = data.get("fragment_count") or 0
             parts = [f"{self.progress:.1f}%"]
+            if total_bytes:
+                parts.append(
+                    f"{downloaded / 1048576:.1f}/"
+                    f"{total_bytes / 1048576:.1f} MB"
+                )
+            elif downloaded:
+                parts.append(f"{downloaded / 1048576:.1f} MB")
             if speed:
                 parts.append(speed)
             if eta:
                 parts.append("剩余 " + eta)
+            if fragment_count:
+                parts.append(
+                    f"分片 {fragment_index}/{fragment_count}"
+                )
+            self.progress_detail = "  ·  ".join(parts)
             self.status = (
                 f"{data.get('index')}/{data.get('total')} "
                 + "  ".join(parts)
@@ -2161,6 +2179,7 @@ class UniversalDownloaderApp(App):
                         "Origin": page_origin,
                         "User-Agent": user_agent,
                     },
+                    "refresh_url": url,
                 }
             )
 
@@ -2398,7 +2417,51 @@ class UniversalDownloaderApp(App):
                 ),
             )
             return
+        if any(entry.get("refresh_url") for entry in selected):
+            self._set_busy(True)
+            self.progress = 0
+            self.progress_detail = ""
+            self.status = "正在刷新视频链接…"
+            self.log("检测到有时效的视频链接，正在重新获取…")
+            threading.Thread(
+                target=self._refresh_links_and_download,
+                args=(selected, quality),
+                daemon=True,
+            ).start()
+            return
         self._launch_download(selected, quality)
+
+    def _refresh_links_and_download(self, selected, quality):
+        pages = sorted(
+            {
+                entry.get("refresh_url")
+                for entry in selected
+                if entry.get("refresh_url")
+            }
+        )
+        fresh_maps = {}
+        for page in pages:
+            try:
+                fresh = self._fallback_embedded(page)
+                fresh_maps[page] = {
+                    item.get("title"): item for item in fresh
+                }
+                self.log(
+                    f"已刷新视频链接：{len(fresh)} 个"
+                )
+            except Exception as exc:
+                self.log(f"刷新视频链接失败：{exc}")
+        for entry in selected:
+            page = entry.get("refresh_url")
+            fresh = (fresh_maps.get(page) or {}).get(
+                entry.get("title")
+            )
+            if fresh:
+                entry["url"] = fresh["url"]
+                entry["headers"] = fresh.get("headers") or {}
+        Clock.schedule_once(
+            lambda dt: self._launch_download(selected, quality), 0
+        )
 
     def _launch_download(self, selected, quality):
         self._last_selected = list(selected)
@@ -2419,6 +2482,7 @@ class UniversalDownloaderApp(App):
         self.fail_count = 0
         self._set_busy(True)
         self.progress = 0
+        self.progress_detail = ""
         self.status = f"准备下载 {len(selected)} 个视频…"
         self.log("—" * 30)
         self.log(f"开始下载 {len(selected)} 个视频。")
@@ -2472,6 +2536,9 @@ class UniversalDownloaderApp(App):
             "windowsfilenames": True,
             "consoletitle": False,
             "merge_output_format": "mp4",
+            "socket_timeout": 30,
+            "retries": 3,
+            "fragment_retries": 5,
         }
         if postprocessors:
             opts["postprocessors"] = postprocessors
@@ -2566,11 +2633,50 @@ class UniversalDownloaderApp(App):
                 pct = float(raw.replace("%", "").strip())
             except ValueError:
                 pct = 0.0
+            downloaded = data.get("downloaded_bytes") or 0
+            total = (
+                data.get("total_bytes")
+                or data.get("total_bytes_estimate")
+                or 0
+            )
+            fragment_index = data.get("fragment_index") or 0
+            fragment_count = data.get("fragment_count") or 0
+            if total:
+                try:
+                    pct = downloaded * 100.0 / total
+                except Exception:
+                    pass
+            elif fragment_count:
+                try:
+                    pct = (
+                        fragment_index * 100.0 / fragment_count
+                    )
+                except Exception:
+                    pass
             speed = ANSI_RE.sub("", data.get("_speed_str", "")).strip()
             eta = ANSI_RE.sub("", data.get("_eta_str", "")).strip()
             title = (data.get("info_dict") or {}).get("title")
+            parts = [f"{pct:.1f}%"]
+            if total:
+                parts.append(
+                    f"{downloaded / 1048576:.1f}/"
+                    f"{total / 1048576:.1f} MB"
+                )
+            elif downloaded:
+                parts.append(f"{downloaded / 1048576:.1f} MB")
+            if speed:
+                parts.append(speed)
+            if eta:
+                parts.append("剩余 " + eta)
+            if fragment_count:
+                parts.append(
+                    f"分片 {fragment_index}/{fragment_count}"
+                )
+            detail = "  ·  ".join(parts)
             Clock.schedule_once(
-                lambda dt: self._update_progress(pct, speed, eta, title)
+                lambda dt: self._update_progress(
+                    pct, speed, eta, title, detail
+                )
             )
         elif status == "finished":
             Clock.schedule_once(
@@ -2588,8 +2694,9 @@ class UniversalDownloaderApp(App):
                 )
             )
 
-    def _update_progress(self, pct, speed, eta, title):
+    def _update_progress(self, pct, speed, eta, title, detail=""):
         self.progress = max(0.0, min(100.0, pct))
+        self.progress_detail = detail
         parts = [f"{pct:.1f}%"]
         if speed:
             parts.append(speed)
