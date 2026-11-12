@@ -15,23 +15,6 @@ from jnius import PythonJavaClass, autoclass, java_method
 
 PythonService = autoclass("org.kivy.android.PythonService")
 service = PythonService.mService
-Context = autoclass("android.content.Context")
-WindowManager = autoclass("android.view.WindowManager")
-LayoutParams = autoclass("android.view.WindowManager$LayoutParams")
-TextView = autoclass("android.widget.TextView")
-GradientDrawable = autoclass("android.graphics.drawable.GradientDrawable")
-Color = autoclass("android.graphics.Color")
-PixelFormat = autoclass("android.graphics.PixelFormat")
-Gravity = autoclass("android.view.Gravity")
-MotionEvent = autoclass("android.view.MotionEvent")
-Build = autoclass("android.os.Build")
-BuildVersion = autoclass("android.os.Build$VERSION")
-Intent = autoclass("android.content.Intent")
-PythonActivity = autoclass("org.kivy.android.PythonActivity")
-Handler = autoclass("android.os.Handler")
-Looper = autoclass("android.os.Looper")
-Toast = autoclass("android.widget.Toast")
-JavaString = autoclass("java.lang.String")
 
 files_dir = Path(service.getFilesDir().getAbsolutePath())
 flag_path = files_dir / "sniffer.flag"
@@ -47,9 +30,38 @@ def log(message):
         pass
 
 
+log("悬浮嗅探服务脚本已载入")
+
+try:
+    Context = autoclass("android.content.Context")
+    WindowManager = autoclass("android.view.WindowManager")
+    LayoutParams = autoclass("android.view.WindowManager$LayoutParams")
+    TextView = autoclass("android.widget.TextView")
+    GradientDrawable = autoclass(
+        "android.graphics.drawable.GradientDrawable"
+    )
+    Color = autoclass("android.graphics.Color")
+    PixelFormat = autoclass("android.graphics.PixelFormat")
+    Gravity = autoclass("android.view.Gravity")
+    MotionEvent = autoclass("android.view.MotionEvent")
+    Build = autoclass("android.os.Build")
+    BuildVersion = autoclass("android.os.Build$VERSION")
+    Intent = autoclass("android.content.Intent")
+    PythonActivity = autoclass("org.kivy.android.PythonActivity")
+    Handler = autoclass("android.os.Handler")
+    Looper = autoclass("android.os.Looper")
+    Toast = autoclass("android.widget.Toast")
+except Exception:
+    log("初始化 Android 类失败：\n" + traceback.format_exc())
+    raise
+
+
 def toast(message):
     try:
-        Toast.makeText(service, JavaString(message), Toast.LENGTH_LONG).show()
+        JavaString = autoclass("java.lang.String")
+        Toast.makeText(
+            service, JavaString(message), Toast.LENGTH_LONG
+        ).show()
     except Exception:
         pass
 
@@ -147,6 +159,7 @@ def setup_overlay():
             Context.WINDOW_SERVICE
         )
         view = TextView(service)
+        JavaString = autoclass("java.lang.String")
         view.setText(JavaString("寻"))
         view.setTextSize(20.0)
         view.setTextColor(Color.WHITE)

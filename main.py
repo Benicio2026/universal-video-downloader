@@ -46,7 +46,7 @@ import yt_dlp
 from yt_dlp.utils import DownloadCancelled
 
 APP_NAME = "万能视频下载器"
-APP_VERSION = "0.9.6"
+APP_VERSION = "0.9.7"
 QUALITIES = [
     "最佳画质（自动）",
     "1080p 及以下",
@@ -631,7 +631,7 @@ class UniversalDownloaderApp(App):
             self.sniffer_status = "正在启动悬浮服务…"
             self.status = "正在启动悬浮服务…"
             self.log("悬浮服务已启动，正在创建气泡…")
-            Clock.schedule_once(self._verify_sniffer_started, 2.5)
+            Clock.schedule_once(self._verify_sniffer_started, 4.0)
         except Exception as exc:
             self.log(f"开启悬浮嗅探失败：{exc}")
             self.status = "悬浮嗅探开启失败"
@@ -2519,6 +2519,16 @@ class UniversalDownloaderApp(App):
             return "best[height<=720]/best", []
         return "best", []
 
+    def _enable_ffmpeg_hls(self):
+        try:
+            from yt_dlp.downloader.external import FFmpegFD
+
+            FFmpegFD.available = classmethod(
+                lambda cls, path=None: True
+            )
+        except Exception:
+            pass
+
     def _make_opts(self, quality, headers=None):
         if self.download_dir is None:
             self.download_dir = self.get_download_dir()
@@ -2539,10 +2549,12 @@ class UniversalDownloaderApp(App):
             "socket_timeout": 30,
             "retries": 3,
             "fragment_retries": 5,
+            "hls_prefer_ffmpeg": bool(self.ffmpeg_path),
         }
         if postprocessors:
             opts["postprocessors"] = postprocessors
         if self.ffmpeg_path and quality != "兼容模式":
+            self._enable_ffmpeg_hls()
             opts["ffmpeg_location"] = self.ffmpeg_path
         if self.cookies_path and self.cookies_path.exists():
             opts["cookiefile"] = str(self.cookies_path)

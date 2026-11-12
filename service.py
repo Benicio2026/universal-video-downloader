@@ -33,6 +33,17 @@ def ffmpeg_env():
     return env
 
 
+def enable_ffmpeg_hls():
+    try:
+        from yt_dlp.downloader.external import FFmpegFD
+
+        FFmpegFD.available = classmethod(
+            lambda cls, path=None: True
+        )
+    except Exception:
+        pass
+
+
 @contextmanager
 def ffmpeg_child_env():
     old_ld = os.environ.get("LD_LIBRARY_PATH")
@@ -299,10 +310,15 @@ def main():
                 "windowsfilenames": True,
                 "consoletitle": False,
                 "merge_output_format": "mp4",
+                "socket_timeout": 30,
+                "retries": 3,
+                "fragment_retries": 5,
+                "hls_prefer_ffmpeg": bool(ffmpeg),
             }
             if postprocessors:
                 opts["postprocessors"] = postprocessors
             if ffmpeg:
+                enable_ffmpeg_hls()
                 opts["ffmpeg_location"] = ffmpeg
             if cookies:
                 opts["cookiefile"] = cookies
